@@ -1,0 +1,2481 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>연결 · AI 지식 그래프 노트</title>
+<meta name="description" content="위키링크와 그래프로 노트를 연결하는 개인용 지식관리 웹앱" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0B0E14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="연결" />
+<link rel="icon" href="icons/icon-192.png" type="image/png" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#0B0E14; --bg-elev:#12161F; --bg-hover:#1B2130; --bg-input:#171B26;
+  --border:#232939; --text:#E7E9EE; --text-dim:#8A93A6; --text-faint:#545E73;
+  --gold:#E3B23C; --gold-dim:rgba(227,178,60,.16);
+  --blue:#4C6FA5; --cyan:#5EC8D8; --danger:#D9695F; --danger-dim:rgba(217,105,95,.14);
+  --radius:8px; --font-ui:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --font-serif:Georgia,"Nanum Myeongjo","Batang",serif;
+  --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+[data-theme="light"]{
+  --bg:#F7F6F3; --bg-elev:#FFFFFF; --bg-hover:#EFEEEA; --bg-input:#FFFFFF;
+  --border:#E3E1DA; --text:#232323; --text-dim:#6B6B6B; --text-faint:#A3A199;
+  --gold:#B8862E; --gold-dim:rgba(184,134,46,.12);
+  --blue:#5876AA; --cyan:#2F8C9C; --danger:#B5453C; --danger-dim:rgba(181,69,60,.10);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  font-family:var(--font-ui); background:var(--bg); color:var(--text);
+  font-size:14px; overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit; cursor:pointer;}
+input,textarea{font-family:inherit; color:var(--text); background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius);}
+input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); outline-offset:1px;}
+::selection{background:var(--gold-dim);}
+
+#app{display:flex; height:100vh; width:100vw;}
+
+/* ---------- Sidebar ---------- */
+#sidebar{
+  width:272px; min-width:272px; background:var(--bg-elev); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; padding:16px 12px;
+}
+.brand{font-size:15px; font-weight:700; letter-spacing:.2px; margin:2px 4px 14px; display:flex; align-items:baseline; gap:8px;}
+.brand-sub{font-size:11px; font-weight:400; color:var(--text-faint);}
+.search-box input{width:100%; padding:8px 10px; font-size:13px;}
+#newNoteBtn{
+  margin-top:8px; width:100%; padding:9px 10px; font-size:13px; font-weight:600;
+  background:var(--gold-dim); color:var(--gold); border:1px solid transparent; border-radius:var(--radius);
+}
+#newNoteBtn:hover{background:var(--gold); color:#12161F;}
+.folder-list{margin-top:10px; display:flex; flex-direction:column; gap:1px; max-height:150px; overflow-y:auto;}
+.folder-item{
+  display:flex; align-items:center; justify-content:space-between; gap:6px;
+  padding:5px 8px; border-radius:6px; cursor:pointer; font-size:12px; color:var(--text-dim);
+}
+.folder-item:hover{background:var(--bg-hover); color:var(--text);}
+.folder-item.active{background:var(--gold-dim); color:var(--gold); font-weight:600;}
+.folder-item .fi-name{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.folder-item .fi-count{font-size:10.5px; color:var(--text-faint); flex-shrink:0;}
+.folder-item.active .fi-count{color:var(--gold);}
+.note-list{flex:1; overflow-y:auto; margin-top:12px; display:flex; flex-direction:column; gap:2px;}
+.note-item{
+  padding:8px 10px; border-radius:var(--radius); cursor:pointer; border:1px solid transparent;
+}
+.note-item:hover{background:var(--bg-hover);}
+.note-item.active{background:var(--gold-dim); border-color:var(--gold);}
+.note-item .ni-title{font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.note-item .ni-preview{font-size:11.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;}
+.note-item .ni-score{font-size:10px; color:var(--gold); float:right;}
+.sidebar-footer{
+  display:flex; align-items:center; justify-content:space-between; padding-top:10px; margin-top:8px;
+  border-top:1px solid var(--border); color:var(--text-faint); font-size:11.5px; gap:8px;
+}
+.sidebar-footer .sf-left{display:flex; flex-direction:column; gap:2px; overflow:hidden;}
+.storage-mode-badge{font-size:10px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.storage-mode-badge.local{color:var(--gold);}
+#settingsBtn{background:none; border:none; color:var(--text-dim); font-size:16px; padding:2px 6px; border-radius:6px;}
+#settingsBtn:hover{background:var(--bg-hover); color:var(--text);}
+
+/* ---------- Main ---------- */
+#main{flex:1; display:flex; flex-direction:column; min-width:0;}
+.tabbar{
+  display:flex; align-items:center; gap:2px; padding:8px 16px; border-bottom:1px solid var(--border);
+  background:var(--bg-elev);
+}
+.tab{
+  background:none; border:none; color:var(--text-dim); font-size:13px; font-weight:600;
+  padding:7px 13px; border-radius:6px;
+}
+.tab:hover{background:var(--bg-hover); color:var(--text);}
+.tab.active{background:var(--bg-hover); color:var(--cyan);}
+.tab-spacer{flex:1;}
+.save-status{font-size:11.5px; color:var(--text-faint);}
+
+.view{display:none; flex:1; min-height:0;}
+.view.active{display:flex;}
+
+/* editor */
+#view-editor{}
+.editor-pane{flex:1; display:flex; flex-direction:column; padding:22px 30px; min-width:0; overflow-y:auto;}
+.title-input{border:none; background:none; font-size:26px; font-weight:700; font-family:var(--font-serif); padding:4px 2px; width:100%;}
+.title-input:focus{outline:none;}
+.editor-toolbar{display:flex; gap:6px; margin:10px 0 8px;}
+.editor-toolbar button{
+  background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
+  font-size:12px; padding:5px 11px; border-radius:6px;
+}
+.editor-toolbar button.on{color:var(--cyan); border-color:var(--cyan);}
+#contentInput{
+  flex:1; resize:none; border:none; background:none; font-size:15px; line-height:1.75; padding:6px 2px;
+  min-height:200px;
+}
+#contentInput:focus{outline:none;}
+.preview-pane{display:none; flex:1; font-size:15px; line-height:1.8; padding:6px 2px; overflow-y:auto;}
+.preview-pane.on{display:block;}
+#contentInput.hidden-mode{display:none;}
+.preview-pane h1,.preview-pane h2,.preview-pane h3{font-family:var(--font-serif); margin:.9em 0 .35em;}
+.preview-pane p{margin:.6em 0;}
+.preview-pane code{background:var(--bg-hover); padding:1px 5px; border-radius:4px; font-family:var(--font-mono); font-size:.9em;}
+.preview-pane ul{padding-left:1.3em;}
+.wikilink{color:var(--cyan); text-decoration:none; border-bottom:1px dashed var(--cyan); cursor:pointer;}
+.wikilink.ghost-link{color:var(--text-faint); border-bottom-color:var(--text-faint);}
+
+.backlinks-pane{
+  width:230px; min-width:230px; border-left:1px solid var(--border); padding:20px 16px; overflow-y:auto;
+  background:var(--bg-elev);
+}
+.backlinks-pane h4{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-faint); margin:0 0 8px;}
+.backlinks-pane h4:not(:first-child){margin-top:20px;}
+.backlink-item{
+  font-size:12.5px; padding:7px 8px; border-radius:6px; color:var(--text-dim); cursor:pointer; margin-bottom:2px;
+}
+.backlink-item:hover{background:var(--bg-hover); color:var(--text);}
+.no-backlinks{font-size:12px; color:var(--text-faint); font-style:italic;}
+#tagsInput,#folderInput{width:100%; padding:6px 8px; font-size:12px;}
+.link-picker{position:relative;}
+#linkPickerInput{width:100%; padding:6px 8px; font-size:12px;}
+.link-picker-results{
+  position:absolute; left:0; right:0; top:100%; margin-top:4px; z-index:5;
+  background:var(--bg-input); border:1px solid var(--border); border-radius:8px;
+  max-height:220px; overflow-y:auto; box-shadow:0 8px 20px rgba(0,0,0,.35);
+}
+.link-picker-item{font-size:12.5px; padding:7px 9px; cursor:pointer; color:var(--text-dim);}
+.link-picker-item:hover{background:var(--bg-hover); color:var(--text);}
+.link-picker-empty{font-size:11.5px; padding:7px 9px; color:var(--text-faint); font-style:italic;}
+
+/* graph */
+#view-graph{position:relative; flex-direction:column;}
+.graph-toolbar{
+  display:flex; align-items:center; gap:14px; padding:8px 16px; font-size:12px; color:var(--text-dim);
+  border-bottom:1px solid var(--border);
+}
+#fpsCounter{font-family:var(--font-mono); color:var(--gold); min-width:58px;}
+#resetZoomBtn{
+  margin-left:auto; background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
+  font-size:12px; padding:5px 12px; border-radius:6px;
+}
+#resetZoomBtn:hover{color:var(--text);}
+#graphCanvas{flex:1; display:block; cursor:grab;}
+#graphCanvas:active{cursor:grabbing;}
+.empty-hint{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:var(--text-faint); font-size:13px; pointer-events:none; top:37px;
+}
+.graph-note-panel{
+  position:absolute; top:37px; right:0; bottom:0; width:340px; max-width:88vw;
+  background:var(--bg-elev); border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(0,0,0,.35);
+  display:flex; flex-direction:column; transform:translateX(100%); transition:transform .18s ease; z-index:6;
+}
+.graph-note-panel.open{transform:translateX(0);}
+.gnp-header{display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:16px 16px 10px;}
+.gnp-header strong{font-family:var(--font-serif); font-size:16px; line-height:1.35;}
+#gnpCloseBtn{background:none; border:none; color:var(--text-dim); font-size:18px; line-height:1; padding:2px 6px; border-radius:6px; flex-shrink:0;}
+#gnpCloseBtn:hover{background:var(--bg-hover); color:var(--text);}
+.gnp-meta{padding:0 16px 10px; font-size:11.5px; color:var(--text-faint); display:flex; flex-wrap:wrap; gap:6px;}
+.gnp-meta span{background:var(--bg-hover); border-radius:5px; padding:2px 7px;}
+.gnp-content{flex:1; overflow-y:auto; padding:4px 16px 16px; font-size:13.5px; line-height:1.7; color:var(--text-dim);}
+.gnp-actions{padding:12px 16px; border-top:1px solid var(--border);}
+#gnpOpenFullBtn{width:100%; padding:8px 10px; font-size:12.5px;}
+@media (max-width:820px){
+  .graph-note-panel{width:100%; max-width:100%; top:37px;}
+}
+
+/* AI chat */
+#view-ai{flex-direction:column;}
+.chat-log{flex:1; overflow-y:auto; padding:20px 26px; display:flex; flex-direction:column; gap:14px;}
+.chat-bubble{max-width:640px; padding:12px 14px; border-radius:12px; font-size:13.5px; line-height:1.65;}
+.chat-bubble.user{align-self:flex-end; background:var(--gold-dim); color:var(--text); border:1px solid transparent;}
+.chat-bubble.ai{align-self:flex-start; background:var(--bg-elev); border:1px solid var(--border); white-space:pre-wrap;}
+.chat-sources{display:flex; flex-wrap:wrap; gap:6px; margin-top:9px;}
+.chat-source-chip{
+  font-size:11px; padding:4px 9px; border-radius:12px; background:var(--bg-hover); color:var(--cyan);
+  cursor:pointer; border:1px solid var(--border);
+}
+.chat-empty{color:var(--text-faint); font-size:13px; margin:auto; text-align:center; max-width:320px; line-height:1.7;}
+.chat-input-row{display:flex; gap:8px; padding:14px 20px; border-top:1px solid var(--border);}
+#chatInput{flex:1; padding:10px 12px; font-size:13.5px;}
+#chatSendBtn{
+  background:var(--gold); color:#12161F; border:none; font-weight:700; font-size:13px; padding:0 18px; border-radius:var(--radius);
+}
+#chatSendBtn:disabled{opacity:.5; cursor:default;}
+
+/* modal */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:50;
+}
+.modal-overlay[hidden]{display:none;}
+.modal{
+  width:400px; max-width:92vw; max-height:86vh; overflow-y:auto; background:var(--bg-elev); border:1px solid var(--border);
+  border-radius:12px; padding:22px 22px 18px;
+}
+.modal h3{margin:0 0 16px; font-family:var(--font-serif);}
+.modal label{display:block; font-size:11.5px; color:var(--text-dim); margin:12px 0 5px;}
+.modal input[type=text],.modal input[type=password]{width:100%; padding:8px 10px; font-size:13px;}
+.modal .hint{font-size:11.5px; color:var(--text-faint); line-height:1.6; margin:8px 0 0;}
+.modal hr{border:none; border-top:1px solid var(--border); margin:16px 0;}
+.modal .row{display:flex; gap:8px; margin-top:8px;}
+.modal .row button{
+  flex:1; background:var(--bg-input); border:1px solid var(--border); color:var(--text); font-size:12px; padding:8px 6px; border-radius:6px;
+}
+.modal .row button:hover{background:var(--bg-hover);}
+.storage-meter{height:5px; background:var(--bg-input); border-radius:3px; overflow:hidden; margin-top:10px;}
+#storageBar{height:100%; background:var(--cyan); width:0%;}
+#storageLabel{font-size:11px; color:var(--text-faint);}
+#closeSettingsBtn{
+  width:100%; margin-top:18px; padding:9px; background:var(--gold); color:#12161F; border:none; font-weight:700;
+  border-radius:var(--radius); font-size:13px;
+}
+
+.toast-wrap{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:100; display:flex; flex-direction:column; gap:6px; align-items:center;}
+.toast{
+  background:var(--bg-elev); border:1px solid var(--border); color:var(--text); font-size:12.5px;
+  padding:9px 16px; border-radius:20px; box-shadow:0 6px 18px rgba(0,0,0,.35);
+}
+
+#menuBtn{display:none; background:none; border:none; color:var(--text-dim); font-size:18px; padding:4px 8px; margin-right:4px; border-radius:6px;}
+#menuBtn:hover{background:var(--bg-hover); color:var(--text);}
+#sidebarBackdrop{display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:19;}
+#sidebarBackdrop.show{display:block;}
+
+@media (max-width:820px){
+  #menuBtn{display:inline-block;}
+  #sidebar{
+    position:fixed; top:0; left:0; z-index:20; height:100%; width:82vw; max-width:320px;
+    transform:translateX(-100%); transition:transform .2s;
+    padding-top:calc(16px + env(safe-area-inset-top));
+  }
+  #sidebar.open{transform:translateX(0);}
+  .backlinks-pane{display:none;}
+  .tabbar{padding-top:calc(8px + env(safe-area-inset-top));}
+  .editor-pane{padding:16px 16px 30px;}
+  .title-input{font-size:22px;}
+  .modal{width:92vw;}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">✦ 연결 <span class="brand-sub">AI 지식 그래프 노트</span></div>
+    <div class="search-box"><input id="searchInput" placeholder="노트 검색 (Ctrl/Cmd+K)" /></div>
+    <div id="folderList" class="folder-list"></div>
+    <button id="newNoteBtn">+ 새 노트 (Ctrl/Cmd+N)</button>
+    <div id="noteList" class="note-list"></div>
+    <div class="sidebar-footer">
+      <div class="sf-left">
+        <span id="noteCount">0개 노트</span>
+        <span id="storageModeBadge" class="storage-mode-badge" hidden></span>
+      </div>
+      <div style="display:flex; gap:2px;">
+        <button id="trashBtn" title="휴지통">🗑</button>
+        <button id="settingsBtn" title="설정">⚙</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="sidebarBackdrop"></div>
+  <main id="main">
+    <div class="tabbar">
+      <button id="menuBtn" title="메뉴">☰</button>
+      <button class="tab active" data-tab="editor">노트</button>
+      <button class="tab" data-tab="graph">그래프</button>
+      <button class="tab" data-tab="ai">AI 질문</button>
+      <div class="tab-spacer"></div>
+      <span id="saveStatus" class="save-status"></span>
+    </div>
+
+    <section id="view-editor" class="view active">
+      <div class="editor-pane">
+        <input id="titleInput" class="title-input" placeholder="제목 없음" />
+        <div class="editor-toolbar">
+          <button id="modeWriteBtn" class="on" data-mode="write">편집</button>
+          <button id="modePreviewBtn" data-mode="preview">미리보기</button>
+          <button id="historyBtn" style="margin-left:auto;">🕐 히스토리</button>
+        </div>
+        <textarea id="contentInput" placeholder="자유롭게 적어보세요. [[다른 노트 제목]] 형식으로 노트를 서로 연결할 수 있습니다."></textarea>
+        <div id="previewPane" class="preview-pane"></div>
+      </div>
+      <div class="backlinks-pane">
+        <h4>관련 노트 연결</h4>
+        <div class="link-picker">
+          <input id="linkPickerInput" placeholder="제목으로 검색해서 연결…" autocomplete="off" />
+          <div id="linkPickerResults" class="link-picker-results" hidden></div>
+        </div>
+        <h4>백링크</h4>
+        <div id="backlinksList"></div>
+        <h4>폴더</h4>
+        <input id="folderInput" list="folderOptions" placeholder="예) 수업 설계 (비워두면 미분류)" />
+        <datalist id="folderOptions"></datalist>
+        <h4>태그</h4>
+        <input id="tagsInput" placeholder="태그1, 태그2" />
+      </div>
+    </section>
+
+
+    <section id="view-graph" class="view">
+      <div class="graph-toolbar">
+        <span id="fpsCounter">-- FPS</span>
+        <span id="graphStats">0개 노트 · 0개 연결</span>
+        <button id="resetZoomBtn">화면 맞춤</button>
+      </div>
+      <canvas id="graphCanvas"></canvas>
+      <div id="emptyGraphHint" class="empty-hint">노트를 추가하고 [[링크]]로 연결하면 여기에 그래프가 나타납니다.</div>
+      <div id="graphNotePanel" class="graph-note-panel">
+        <div class="gnp-header">
+          <strong id="gnpTitle"></strong>
+          <button id="gnpCloseBtn" title="닫기">×</button>
+        </div>
+        <div id="gnpMeta" class="gnp-meta"></div>
+        <div id="gnpContent" class="gnp-content"></div>
+        <div class="gnp-actions">
+          <button id="gnpOpenFullBtn">전체 화면에서 열기</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-ai" class="view">
+      <div id="chatLog" class="chat-log">
+        <div class="chat-empty">노트 내용을 근거로 답하는 AI 질의응답입니다.<br/>먼저 ⚙ 설정에서 Gemini API 키를 등록해주세요.</div>
+      </div>
+      <div class="chat-input-row">
+        <input id="chatInput" placeholder="예) 지난 수업 설계 관련 메모 요약해줘" />
+        <button id="chatSendBtn">질문</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="settingsModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h3>설정</h3>
+    <label>Gemini API 키</label>
+    <input id="apiKeyInput" type="password" placeholder="AIza..." autocomplete="off" />
+    <label>모델</label>
+    <input id="modelInput" type="text" placeholder="gemini-3.6-flash" />
+    <p class="hint">API 키는 이 기기의 앱 저장소에만 보관되며, Gemini 서버 호출 시에만 사용됩니다. Google AI Studio에서 발급받을 수 있습니다. 모델명이 바뀌면 이 칸에서 직접 수정하세요.</p>
+
+    <label style="margin-top:16px;">저장 용량</label>
+    <div class="storage-meter"><div id="storageBar"></div></div>
+    <span id="storageLabel">-</span>
+    <p class="hint">노트 본문(프로젝션)은 단일 저장 슬롯(5MB 상한)을 사용하고, 편집 이력(NoteLedger)은 별도로 샤딩 저장되어 5MB 한계와 무관하게 계속 쌓입니다.</p>
+
+    <hr/>
+    <label>이력 관리 (NoteLedger)</label>
+    <p class="hint">모든 생성·수정·삭제가 이벤트로 기록됩니다. 노트마다 최근 이력만 남기고 정리하면 저장 공간을 절약할 수 있습니다(현재 내용은 그대로 유지).</p>
+    <div class="row">
+      <button id="compactBtn">오래된 이력 정리</button>
+    </div>
+
+    <hr/>
+    <label>성능 테스트</label>
+    <p class="hint">샘플 노트를 대량 생성해 1,000개 이상 노트에서도 그래프와 검색이 빠르게 동작하는지 직접 확인할 수 있습니다. (성능 테스트용 샘플은 이력에 기록되지 않습니다)</p>
+    <div class="row">
+      <button id="genSampleBtn">샘플 1,000개 생성</button>
+      <button id="delSampleBtn">샘플 노트 삭제</button>
+    </div>
+
+    <hr/>
+    <label>백업</label>
+    <div class="row">
+      <button id="exportBtn">내보내기 (JSON)</button>
+      <button id="importBtn">가져오기 (JSON)</button>
+    </div>
+    <input id="importFile" type="file" accept="application/json" hidden />
+    <div class="row">
+      <button id="exportMdBtn">MD로 일괄 내보내기 (.zip)</button>
+      <button id="importMdBtn">MD 파일 가져오기</button>
+    </div>
+    <input id="importMdFiles" type="file" accept=".md,text/markdown" multiple hidden />
+    <p class="hint">노트마다 .md 파일 하나로 묶어 .zip으로 내보냅니다. 파일 상단에 title/tags 프런트매터가 포함되어 Obsidian 등 다른 앱에서도 바로 열립니다. 가져오기한 노트도 생성 이벤트로 이력에 기록됩니다.</p>
+
+    <hr/>
+    <label>구글 드라이브 연동</label>
+    <p class="hint">이 기기의 노트를 구글 드라이브의 한 폴더에 .md 파일로 양방향 동기화합니다. 별도 프록시 서버 없이 브라우저에서 바로 접속합니다. 처음 한 번은 본인의 구글 클라우드 프로젝트에서 OAuth 클라이언트 ID를 만들어 아래에 붙여넣어야 합니다 — 절차는 README.md 참고.</p>
+    <label style="margin-top:10px;">클라이언트 ID (OAuth Client ID)</label>
+    <input id="driveClientIdInput" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off" />
+    <label>드라이브 폴더 이름</label>
+    <input id="driveFolderNameInput" type="text" placeholder="연결 노트" autocomplete="off" />
+    <p class="hint">제목·본문·태그·폴더가 동기화됩니다. 같은 노트가 양쪽에서 동시에 바뀐 경우 드라이브 쪽 내용은 "(드라이브 충돌 사본)"으로 새 노트에 보관되고, 이 기기의 내용이 드라이브에 반영됩니다. 삭제는 동기화하지 않습니다.</p>
+    <div class="row">
+      <button id="driveSyncBtn">구글 드라이브에 연결 / 지금 동기화</button>
+    </div>
+    <span id="driveSyncStatus" class="hint">아직 동기화하지 않았습니다.</span>
+
+    <hr/>
+    <label>로컬 폴더</label>
+    <p class="hint">이 기기의 폴더 하나를 지정해 노트를 .md 파일로 저장합니다. 탐색기(파인더)에서 그 폴더에 .md 파일을 직접 넣어도 다음 동기화 때 노트로 들어옵니다. 크롬·엣지 데스크톱에서만 지원됩니다(사파리·파이어폭스는 미지원).</p>
+    <div class="row">
+      <button id="localFolderPickBtn">폴더 선택</button>
+      <button id="localFolderSyncBtn">지금 동기화</button>
+    </div>
+    <span id="localFolderStatus" class="hint">아직 폴더를 선택하지 않았습니다.</span>
+
+    <hr/>
+    <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
+      <input type="checkbox" id="themeToggle" style="width:auto;" /> 라이트 모드
+    </label>
+
+    <button id="closeSettingsBtn">닫기</button>
+  </div>
+</div>
+
+<div id="trashModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h3>휴지통</h3>
+    <p class="hint">삭제한 노트는 바로 지워지지 않고 여기 보관됩니다. 복원하거나 영구 삭제할 수 있습니다.</p>
+    <div id="trashList"></div>
+    <button id="closeTrashBtn">닫기</button>
+  </div>
+</div>
+
+<div id="historyModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h3>편집 히스토리</h3>
+    <p class="hint">이 노트의 생성·수정 이력입니다. 원하는 시점으로 되돌릴 수 있으며, 되돌리기도 새 이력으로 기록됩니다.</p>
+    <div id="historyList"></div>
+    <button id="closeHistoryBtn">닫기</button>
+  </div>
+</div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script>
+'use strict';
+/* =========================================================================
+   연결 (Yeon-gyeol) — AI 지식 그래프 노트
+   단일 파일 웹 앱. 섹션 구성:
+   1) 유틸 / 저장소(Storage)
+   2) 데이터 모델 · 위키링크 파서 · 검색 인덱스
+   3) 마크다운 렌더러
+   4) 그래프 뷰 (d3-force + Canvas)
+   5) Gemini API RAG
+   6) 구글 드라이브 연동 · 로컬 폴더 연동 — 둘 다 노트를 .md 파일(제목/태그/폴더/
+      생성·수정 시각 프런트매터 포함)로 저장한다. 구글 드라이브는 CORS를 지원해서
+      Notion과 달리 중계 서버 없이 브라우저에서 바로 접속한다.
+   7) UI 컨트롤러 / 이벤트 바인딩
+   8) 초기화
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------
+   0) 독립 실행(GitHub Pages 등) 환경을 위한 저장소 폴리필
+   Claude 아티팩트 환경에는 window.storage가 이미 주입되어 있으므로 그 경우엔
+   손대지 않는다. 없는 환경(GitHub Pages, file:// 등)에서만 localStorage 기반
+   구현을 채워 넣어 Store/Ledger가 동일한 인터페이스로 계속 동작하게 한다.
+   (localStorage는 출처당 대략 5~10MB 한도이며, Store가 이미 5MB 근접 시
+   경고를 표시하므로 별도 용량 처리는 필요 없다.)
+--------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   0) 독립 실행 환경을 위한 저장소 폴리필
+   Claude 아티팩트 환경에는 window.storage가 이미 주입되어 있으므로 그 경우엔
+   손대지 않는다. 없는 환경에서는 두 가지 중 하나를 자동으로 고른다:
+     1) 연결.exe(로컬 서버)로 열었다면 → /api/storage/* 를 통해 실제 파일로 저장
+        (노트는 exe 옆 notes/ 폴더에 .md 파일 하나씩 — 탐색기에서 직접 붙여넣기 가능)
+     2) 그냥 GitHub Pages 등 브라우저로 열었다면 → 기존처럼 localStorage 사용
+   첫 호출에서 로컬 서버가 있는지 한 번만 확인(핑)하고, 그 결과를 기억해 이후
+   호출은 곧장 맞는 쪽으로 간다.
+--------------------------------------------------------------------- */
+if (!window.storage){
+  const LS_PREFIX = 'kg-notes:';
+  let serverMode = null; // null=미확인, true=로컬 서버, false=localStorage
+
+  async function detectLocalServer(){
+    if (serverMode !== null) return serverMode;
+    try{
+      const res = await fetch('/api/ping', { cache:'no-store' });
+      serverMode = res.ok;
+    }catch(e){
+      serverMode = false;
+    }
+    window.__LOCAL_SERVER_MODE__ = serverMode;
+    if (!serverMode && navigator.storage && navigator.storage.persist){
+      // 브라우저에 "이 사이트의 저장 데이터는 용량 부족 등으로 자동 정리하지 말아달라"고
+      // 요청한다. 모바일 사파리 등에서 한동안 안 열면 저장소를 비우는 경우가 있는데,
+      // 이 요청이 받아들여지면(navigator.storage.persisted()로 확인 가능) 그 대상에서 빠진다.
+      navigator.storage.persist().catch(()=>{ /* 미지원 브라우저는 무시 */ });
+    }
+    return serverMode;
+  }
+
+  window.storage = {
+    async get(key, shared){
+      if (await detectLocalServer()){
+        const res = await fetch('/api/storage/'+encodeURIComponent(key), { cache:'no-store' });
+        if (res.status === 404) throw new Error('key not found: '+key);
+        if (!res.ok) throw new Error('로컬 서버 오류 (HTTP '+res.status+')');
+        const value = await res.text();
+        return { key, value, shared: !!shared };
+      }
+      const raw = localStorage.getItem(LS_PREFIX+key);
+      if (raw === null) throw new Error('key not found: '+key);
+      return { key, value: raw, shared: !!shared };
+    },
+    async set(key, value, shared){
+      if (await detectLocalServer()){
+        const res = await fetch('/api/storage/'+encodeURIComponent(key), { method:'PUT', body:value });
+        if (!res.ok) throw new Error('로컬 서버 저장 실패 (HTTP '+res.status+')');
+        return { key, value, shared: !!shared };
+      }
+      try{
+        localStorage.setItem(LS_PREFIX+key, value);
+      }catch(e){
+        throw new Error('localStorage 저장 실패(용량 초과 가능): '+e.message);
+      }
+      return { key, value, shared: !!shared };
+    },
+    async delete(key, shared){
+      if (await detectLocalServer()){
+        try{ await fetch('/api/storage/'+encodeURIComponent(key), { method:'DELETE' }); }catch(e){ /* best effort */ }
+        return { key, deleted:true, shared: !!shared };
+      }
+      localStorage.removeItem(LS_PREFIX+key);
+      return { key, deleted:true, shared: !!shared };
+    },
+    async list(prefix, shared){
+      if (await detectLocalServer()){
+        const res = await fetch('/api/storage?prefix='+encodeURIComponent(prefix||''), { cache:'no-store' });
+        const data = res.ok ? await res.json() : { keys: [] };
+        return { keys: data.keys||[], prefix, shared: !!shared };
+      }
+      const p = LS_PREFIX+(prefix||'');
+      const keys = [];
+      for (let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if (k && k.startsWith(p)) keys.push(k.slice(LS_PREFIX.length));
+      }
+      return { keys, prefix, shared: !!shared };
+    }
+  };
+}
+
+/* ---------------------------------------------------------------------
+   1) 유틸 / 저장소
+--------------------------------------------------------------------- */
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+function uid(){
+  return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+}
+function debounce(fn, ms){
+  let t=null;
+  return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
+}
+function escapeHtml(s){
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showToast(msg, ms=3200){
+  const wrap = $('#toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(), 300); }, ms);
+}
+
+/* Store: 프로젝션(현재 상태) 저장소. 향후 SQLite WASM+OPFS로 교체할 때
+   이 객체의 내부 구현만 바꾸면 되도록 인터페이스를 얇게 유지한다. */
+const Store = {
+  async loadAll(){
+    try{
+      const r = await window.storage.get('notes-db', false);
+      return r && r.value ? JSON.parse(r.value) : [];
+    }catch(e){ return []; }
+  },
+  async saveAll(notes){
+    try{
+      const json = JSON.stringify(notes);
+      const bytes = new Blob([json]).size;
+      lastProjectionBytes = bytes;
+      updateStorageMeter();
+      if (bytes > 4.5*1024*1024){
+        showToast('⚠ 노트 저장 용량이 5MB 한도에 근접했습니다. 내보내기 후 오래된 노트를 정리해주세요.', 5000);
+      }
+      const res = await window.storage.set('notes-db', json, false);
+      return !!res;
+    }catch(e){ showToast('저장 실패: '+e.message); return false; }
+  },
+  async loadSettings(){
+    try{
+      const r = await window.storage.get('app-settings', false);
+      return r && r.value ? JSON.parse(r.value) : {};
+    }catch(e){ return {}; }
+  },
+  async saveSettings(s){
+    try{ await window.storage.set('app-settings', JSON.stringify(s), false); }catch(e){ /* best effort */ }
+  }
+};
+
+/* ---------------------------------------------------------------------
+   1-b) NoteLedger — append-only 이벤트 원장 (v2 Phase 1)
+   note.create / note.edit / note.delete / note.restore 를 이벤트로 기록한다.
+   저장 API가 키 1개당 5MB로 제한되므로, 이벤트를 SHARD_SIZE개 단위로
+   여러 키(ledger-shard-0, -1, ...)에 나눠 담아 5MB 단일 키 한계를 우회한다.
+   지금 당장은 매 수정마다 "전체 스냅샷"을 이벤트로 남기는 단순한 방식을
+   쓴다 — diff 기반 저장보다 구현이 단순하고 Time Travel 복원 로직도
+   "가장 가까운 과거 이벤트를 찾는다" 수준으로 끝나 정확성을 보장하기 쉽다.
+   (트레이드오프: 편집 횟수가 많은 노트일수록 이력 저장 용량이 커진다 —
+   설정의 "오래된 이력 정리" 기능으로 완화한다.)
+--------------------------------------------------------------------- */
+const LEDGER_SHARD_SIZE = 400;
+
+const Ledger = {
+  meta: { shardCount: 0 },
+  cache: [], // 전체 이벤트 캐시 (앱 시작 시 1회 로드)
+
+  async _loadMeta(){
+    try{
+      const r = await window.storage.get('ledger-meta', false);
+      return r && r.value ? JSON.parse(r.value) : { shardCount: 0 };
+    }catch(e){ return { shardCount: 0 }; }
+  },
+  async _saveMeta(meta){
+    try{ await window.storage.set('ledger-meta', JSON.stringify(meta), false); }catch(e){ /* best effort */ }
+  },
+  async _loadShard(i){
+    try{
+      const r = await window.storage.get('ledger-shard-'+i, false);
+      return r && r.value ? JSON.parse(r.value) : [];
+    }catch(e){ return []; }
+  },
+  async _saveShard(i, events){
+    try{ await window.storage.set('ledger-shard-'+i, JSON.stringify(events), false); }catch(e){ /* best effort */ }
+  },
+
+  async loadAll(){
+    this.meta = await this._loadMeta();
+    const all = [];
+    for (let i=0; i<this.meta.shardCount; i++){
+      const shard = await this._loadShard(i);
+      for (const ev of shard) all.push(ev);
+    }
+    this.cache = all;
+    return all;
+  },
+
+  // events: [{type, noteId, payload}] — id/ts/actor는 이 함수가 채운다
+  async append(rawEvents){
+    if (!rawEvents || !rawEvents.length) return;
+    const events = rawEvents.map(e => ({ id: uid(), ts: Date.now(), actor:'user', ...e }));
+    let shardCount = this.meta.shardCount || 0;
+    let lastShard = shardCount>0 ? await this._loadShard(shardCount-1) : [];
+    if (shardCount===0) shardCount = 1;
+    for (const ev of events){
+      if (lastShard.length >= LEDGER_SHARD_SIZE){
+        await this._saveShard(shardCount-1, lastShard);
+        shardCount++; lastShard = [];
+      }
+      lastShard.push(ev);
+      this.cache.push(ev);
+    }
+    await this._saveShard(shardCount-1, lastShard);
+    this.meta.shardCount = shardCount;
+    await this._saveMeta(this.meta);
+    updateStorageMeter();
+  },
+
+  eventsForNote(noteId){
+    return this.cache.filter(e=>e.noteId===noteId).sort((a,b)=>a.ts-b.ts);
+  },
+
+  // 임의 시점 상태 복원: noteId의 이벤트 중 ts 이하 가장 최근 것의 payload를 반환
+  stateAt(noteId, ts){
+    const evs = this.eventsForNote(noteId).filter(e=>e.ts<=ts && e.payload && e.payload.content!==undefined);
+    return evs.length ? evs[evs.length-1].payload : null;
+  },
+
+  async totalBytes(){
+    let total = 0;
+    for (let i=0; i<this.meta.shardCount; i++){
+      total += new Blob([JSON.stringify(await this._loadShard(i))]).size;
+    }
+    return total;
+  },
+
+  // 노트마다 최근 keepPerNote개 이벤트만 남기고 나머지를 정리한다.
+  // (오래된 세부 이력은 사라지지만, 각 노트의 "현재 상태"는 항상 최신 이벤트로 보존된다)
+  async compact(keepPerNote){
+    const byNote = new Map();
+    for (const ev of this.cache){
+      if (!byNote.has(ev.noteId)) byNote.set(ev.noteId, []);
+      byNote.get(ev.noteId).push(ev);
+    }
+    const kept = [];
+    for (const [, evs] of byNote){
+      evs.sort((a,b)=>a.ts-b.ts);
+      kept.push(...(evs.length>keepPerNote ? evs.slice(evs.length-keepPerNote) : evs));
+    }
+    kept.sort((a,b)=>a.ts-b.ts);
+
+    const oldShardCount = this.meta.shardCount || 0;
+    let shardIdx = 0, buf = [];
+    for (const ev of kept){
+      buf.push(ev);
+      if (buf.length >= LEDGER_SHARD_SIZE){ await this._saveShard(shardIdx, buf); shardIdx++; buf=[]; }
+    }
+    if (buf.length || shardIdx===0){ await this._saveShard(shardIdx, buf); shardIdx++; }
+    for (let i=shardIdx; i<oldShardCount; i++){
+      try{ await window.storage.delete('ledger-shard-'+i, false); }catch(e){ /* best effort */ }
+    }
+    this.meta = { shardCount: shardIdx };
+    this.cache = kept;
+    await this._saveMeta(this.meta);
+    updateStorageMeter();
+    return kept.length;
+  }
+};
+
+function makeEvent(type, noteId, payload, actor){
+  return actor ? { type, noteId, payload, actor } : { type, noteId, payload };
+}
+
+let lastProjectionBytes = 0;
+function updateStorageMeter(){
+  const capPerKey = 5*1024*1024;
+  const pct = Math.min(100, (lastProjectionBytes/capPerKey)*100);
+  const bar = $('#storageBar'); const label = $('#storageLabel');
+  if (bar) bar.style.width = pct.toFixed(1)+'%';
+  if (label){
+    const ledgerKb = (Ledger._lastKnownBytes!=null) ? (Ledger._lastKnownBytes/1024).toFixed(0)+'KB' : '계산 중…';
+    label.textContent = '노트: '+(lastProjectionBytes/1024).toFixed(0)+'KB / 5,120KB · 이력 원장: '+ledgerKb;
+  }
+}
+async function refreshStorageMeter(){
+  Ledger._lastKnownBytes = await Ledger.totalBytes();
+  updateStorageMeter();
+}
+
+/* ---------------------------------------------------------------------
+   2) 데이터 모델 · 위키링크 파서 · 검색 인덱스
+--------------------------------------------------------------------- */
+const state = {
+  notes: [],            // 전체 노트 (전문 포함)
+  idx: null,            // deriveIndexes() 결과
+  activeId: null,
+  searchQuery: '',
+  searchResults: [],     // [{id, score}]
+  activeFolder: '__ALL__', // '__ALL__' | '__UNFILED__' | 폴더명
+  graphSelectedId: null,   // 그래프에서 클릭해 선택된 노드(사이드 패널에 표시 중인 노트)
+  settings: {},
+  theme: 'dark',
+  editorMode: 'write',
+  chatBusy: false,
+  graphNodesById: new Map(),
+  graphNodes: [], graphLinks: [],
+  simulation: null,
+};
+
+function tokenize(text){
+  if (!text) return [];
+  const m = String(text).toLowerCase().match(/[\p{L}\p{N}]+/gu);
+  return m || [];
+}
+
+function parseWikilinks(content){
+  const re = /\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g;
+  const out = []; let m;
+  while ((m = re.exec(content)) !== null){
+    out.push({ title: m[1].trim(), alias: m[2] ? m[2].trim() : null });
+  }
+  return out;
+}
+
+// 전체 노트 배열로부터 검색 인덱스 / 링크 그래프를 재계산 (I/O 없이 메모리에서만 수행)
+function deriveIndexes(notes){
+  const t0 = performance.now();
+  const byId = new Map(notes.map(n=>[n.id, n]));
+  const byTitleLower = new Map();
+  for (const n of notes) byTitleLower.set((n.title||'').trim().toLowerCase(), n.id);
+
+  const invIndex = new Map();     // token -> Map(noteId -> count)
+  const linksOf = new Map();      // noteId -> [{title, targetId, self}]
+  const backlinkCount = new Map();// noteId -> count
+
+  for (const n of notes){
+    const tokens = {};
+    for (const t of tokenize(n.content)) tokens[t] = (tokens[t]||0)+1;
+    for (const t of tokenize(n.title)) tokens[t] = (tokens[t]||0)+3; // 제목 가중치
+    for (const tag of (n.tags||[])) for (const t of tokenize(tag)) tokens[t] = (tokens[t]||0)+2;
+    for (const [tok,cnt] of Object.entries(tokens)){
+      if (!invIndex.has(tok)) invIndex.set(tok, new Map());
+      invIndex.get(tok).set(n.id, cnt);
+    }
+    const raw = parseWikilinks(n.content);
+    const resolved = raw.map(l=>{
+      const targetId = byTitleLower.get(l.title.toLowerCase()) || null;
+      return { title: l.title, targetId: (targetId && targetId!==n.id) ? targetId : null, self: targetId===n.id };
+    });
+    linksOf.set(n.id, resolved);
+  }
+  for (const [, links] of linksOf){
+    for (const l of links){
+      if (l.targetId) backlinkCount.set(l.targetId, (backlinkCount.get(l.targetId)||0)+1);
+    }
+  }
+  return { byId, byTitleLower, invIndex, linksOf, backlinkCount, elapsedMs: performance.now()-t0 };
+}
+
+function reindex(){
+  state.idx = deriveIndexes(state.notes.filter(n=>!n.deletedAt));
+}
+
+// TF-IDF 유사 스코어링 기반 검색
+function searchNotes(query, topK=200){
+  const qTokens = tokenize(query);
+  if (!qTokens.length) return [];
+  const N = state.notes.length || 1;
+  const scores = new Map();
+  for (const qt of qTokens){
+    const postings = state.idx.invIndex.get(qt);
+    if (!postings) continue;
+    const df = postings.size;
+    const idf = Math.log((N+1)/(df+0.5)) + 1;
+    for (const [id, tf] of postings){
+      scores.set(id, (scores.get(id)||0) + tf*idf);
+    }
+  }
+  return [...scores.entries()].sort((a,b)=>b[1]-a[1]).slice(0, topK).map(([id,score])=>({id,score}));
+}
+
+function findNoteByTitle(title){
+  const id = state.idx.byTitleLower.get(title.trim().toLowerCase());
+  return id ? state.idx.byId.get(id) : null;
+}
+
+function buildPreview(content){
+  return String(content||'')
+    .replace(/\[\[.*?\]\]/g,'')
+    .replace(/[#*_`>-]/g,'')
+    .replace(/\s+/g,' ')
+    .trim().slice(0,110);
+}
+
+/* ---------------------------------------------------------------------
+   3) 마크다운 렌더러 (경량, XSS 안전 — 먼저 escape 후 태그 주입)
+--------------------------------------------------------------------- */
+function renderMarkdown(md){
+  let html = escapeHtml(md || '');
+
+  html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>')
+             .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+             .replace(/^# (.*)$/gm, '<h1>$1</h1>');
+
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+
+  html = html.replace(/\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (m, title, alias) => {
+    const t = title.trim(); const display = (alias||title).trim();
+    const resolved = !!findNoteByTitle(t);
+    return `<a href="#" class="wikilink${resolved?'':' ghost-link'}" data-wikilink-title="${escapeHtml(t)}">${escapeHtml(display)}</a>`;
+  });
+
+  html = html.replace(/^- (.*)$/gm, '<li>$1</li>');
+  html = html.replace(/(?:<li>.*<\/li>\n?)+/g, (m) => '<ul>'+m+'</ul>');
+
+  html = html.split(/\n{2,}/).map(block=>{
+    const trimmed = block.trim();
+    if (/^<(h1|h2|h3|ul)/.test(trimmed)) return block;
+    if (!trimmed) return '';
+    return '<p>'+block.replace(/\n/g,'<br>')+'</p>';
+  }).join('\n');
+
+  return html;
+}
+
+/* ---------------------------------------------------------------------
+   4) 그래프 뷰 (d3-force + Canvas 2D)
+--------------------------------------------------------------------- */
+let canvas, ctx, zoomBehavior, transform = d3.zoomIdentity;
+let rafId = null, fpsLast = performance.now(), fpsFrames = 0, hoveredNodeId = null;
+
+function nodeRadius(n){
+  if (n.ghost) return 3.2;
+  return Math.min(4.5 + Math.sqrt(n.backlinkCount||0) * 2.3, 22);
+}
+
+function buildGraphData(){
+  const nodes = [];
+  for (const n of state.notes){
+    nodes.push({ id:n.id, title:n.title||'제목 없음', ghost:false, backlinkCount: state.idx.backlinkCount.get(n.id)||0 });
+  }
+  const links = [];
+  const ghostSeen = new Map();
+  for (const n of state.notes){
+    for (const l of (state.idx.linksOf.get(n.id)||[])){
+      if (l.self) continue;
+      if (l.targetId){
+        links.push({ source:n.id, target:l.targetId, resolved:true });
+      } else {
+        const key = l.title.toLowerCase();
+        let gid = ghostSeen.get(key);
+        if (!gid){
+          gid = 'ghost:'+key;
+          ghostSeen.set(key, gid);
+          nodes.push({ id:gid, title:l.title, ghost:true, backlinkCount:0 });
+        }
+        links.push({ source:n.id, target:gid, resolved:false });
+      }
+    }
+  }
+  return { nodes, links };
+}
+
+function rebuildGraphSimulation(){
+  const { nodes, links } = buildGraphData();
+  const prev = state.graphNodesById;
+  for (const n of nodes){
+    const old = prev.get(n.id);
+    if (old){ n.x=old.x; n.y=old.y; n.vx=old.vx; n.vy=old.vy; }
+  }
+  state.graphNodesById = new Map(nodes.map(n=>[n.id,n]));
+  state.graphNodes = nodes;
+  state.graphLinks = links;
+
+  if (state.simulation) state.simulation.stop();
+  const rect = canvas.getBoundingClientRect();
+  state.simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d=>d.id).distance(l=>l.resolved?42:60).strength(0.28))
+    .force('charge', d3.forceManyBody().strength(-72).distanceMax(520))
+    .force('center', d3.forceCenter(rect.width/2, rect.height/2))
+    .force('collide', d3.forceCollide(d=>nodeRadius(d)+3))
+    .alphaDecay(0.026);
+
+  $('#graphStats').textContent = nodes.length+'개 노트 · '+links.filter(l=>l.resolved).length+'개 연결';
+  $('#emptyGraphHint').style.display = nodes.length ? 'none' : 'flex';
+}
+
+function nodeAt(x, y){
+  let best=null, bestD=Infinity;
+  for (const n of state.graphNodes){
+    const dx=n.x-x, dy=n.y-y, d=dx*dx+dy*dy;
+    const r=nodeRadius(n)+4;
+    if (d < r*r && d < bestD){ best=n; bestD=d; }
+  }
+  return best;
+}
+
+function currentHighlight(){
+  // 검색어가 있으면 매칭 노트 + 1차 연결 노드만 강조. 검색 중이 아니고 그래프에서
+  // 노드를 하나 선택해뒀다면 그 노드 + 직접 연결된 노드만 강조한다.
+  const match = new Set();
+  if (state.searchQuery && state.searchResults.length){
+    for (const r of state.searchResults) match.add(r.id);
+  } else if (state.graphSelectedId){
+    match.add(state.graphSelectedId);
+  }
+  if (!match.size) return { match, neighbor:new Set() };
+  const neighbor = new Set(match);
+  for (const l of state.graphLinks){
+    const s = typeof l.source==='object'?l.source.id:l.source;
+    const t = typeof l.target==='object'?l.target.id:l.target;
+    if (match.has(s)) neighbor.add(t);
+    if (match.has(t)) neighbor.add(s);
+  }
+  return { match, neighbor };
+}
+
+function draw(){
+  if (!ctx) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,rect.width,rect.height);
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#0B0E14';
+  ctx.fillRect(0,0,rect.width,rect.height);
+
+  ctx.translate(transform.x, transform.y);
+  ctx.scale(transform.k, transform.k);
+
+  const { match, neighbor } = currentHighlight();
+  const dimAll = match.size > 0;
+
+  // edges
+  for (const l of state.graphLinks){
+    const s = l.source, t = l.target;
+    if (typeof s!=='object' || typeof t!=='object') continue;
+    const dim = dimAll && !(neighbor.has(s.id) && neighbor.has(t.id));
+    ctx.strokeStyle = l.resolved
+      ? 'rgba(76,111,165,'+(dim?0.07:0.4)+')'
+      : 'rgba(84,94,115,'+(dim?0.05:0.22)+')';
+    ctx.setLineDash(l.resolved ? [] : [3,3]);
+    ctx.lineWidth = 1/transform.k;
+    ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(t.x,t.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // 노드: 라벨은 기본적으로 숨겨두고 (1) 충분히 확대했거나 (2) 연결이 많은 허브 노드이거나
+  // (3) 마우스가 올라가 있거나 (4) 지금 열려 있는 노트이거나 (5) 검색으로 강조된 노드일 때만
+  // 보여준다. 전부 다 보여주면 노드가 많아질수록 글자가 겹쳐 연결 구조를 읽기 어려워진다.
+  const HUB_BACKLINKS = 3;
+  for (const n of state.graphNodes){
+    if (typeof n.x !== 'number') continue;
+    const r = nodeRadius(n);
+    const isMatch = match.has(n.id);
+    const isHovered = n.id === hoveredNodeId;
+    const isActiveNote = n.id === state.activeId;
+    const dim = dimAll && !neighbor.has(n.id);
+    ctx.globalAlpha = dim ? 0.13 : 1;
+    ctx.shadowBlur = n.ghost ? 0 : (isMatch || isHovered ? 16 : 7);
+    ctx.shadowColor = isMatch ? '#E3B23C' : 'rgba(94,200,216,.45)';
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = n.ghost ? '#545E73' : (isMatch ? '#E3B23C' : '#5EC8D8');
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    if (isHovered && !n.ghost){
+      ctx.beginPath(); ctx.arc(n.x, n.y, r+3, 0, Math.PI*2);
+      ctx.strokeStyle = '#E7E9EE'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
+    }
+    const showLabel = transform.k > 0.9 || (n.backlinkCount||0) >= HUB_BACKLINKS || isHovered || isActiveNote || (dimAll && !dim);
+    if (showLabel && (!dim || !dimAll)){
+      ctx.globalAlpha = dim ? 0.13 : 0.92;
+      ctx.fillStyle = n.ghost ? '#8A93A6' : '#E7E9EE';
+      ctx.font = (isHovered? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
+      ctx.fillText(n.title, n.x + r + 4, n.y + 3.5);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.setTransform(1,0,0,1,0,0);
+}
+
+function trackFps(){
+  fpsFrames++;
+  const now = performance.now();
+  if (now - fpsLast >= 500){
+    const fps = Math.round(fpsFrames*1000/(now-fpsLast));
+    fpsFrames=0; fpsLast=now;
+    const el = $('#fpsCounter'); if (el) el.textContent = fps+' FPS';
+  }
+}
+
+function startGraphLoop(){
+  if (rafId) return;
+  const loop = ()=>{ draw(); trackFps(); rafId = requestAnimationFrame(loop); };
+  rafId = requestAnimationFrame(loop);
+}
+function stopGraphLoop(){
+  if (rafId){ cancelAnimationFrame(rafId); rafId=null; }
+}
+
+// 그래프 탭이 처음엔 display:none이라 initGraph() 시점엔 캔버스 크기를 0으로 읽는다.
+// 그래서 window resize뿐 아니라 "그래프" 탭으로 전환할 때도 다시 불러 실제 크기로 맞춘다.
+function resizeGraphCanvas(){
+  if (!canvas) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, rect.width*dpr);
+  canvas.height = Math.max(1, (rect.height-1)*dpr);
+  canvas.style.width = rect.width+'px';
+  canvas.style.height = Math.max(0, rect.height-1)+'px';
+  if (state.simulation) state.simulation.force('center', d3.forceCenter(rect.width/2, rect.height/2));
+  draw();
+}
+
+function initGraph(){
+  canvas = $('#graphCanvas');
+  ctx = canvas.getContext('2d');
+
+  window.addEventListener('resize', resizeGraphCanvas);
+  resizeGraphCanvas();
+
+  zoomBehavior = d3.zoom()
+    .scaleExtent([0.12, 6])
+    .filter((event)=>{
+      if (event.type === 'wheel') return true;
+      if (event.button !== undefined && event.button !== 0) return false;
+      const [x,y] = transform.invert(d3.pointer(event, canvas));
+      return !nodeAt(x,y);
+    })
+    .on('zoom', (event)=>{ transform = event.transform; });
+  d3.select(canvas).call(zoomBehavior);
+
+  const drag = d3.drag()
+    // d3.drag는 기본적으로(clickDistance=0) mousedown~mouseup 사이에 1px만 움직여도
+    // 뒤따르는 click 이벤트를 삼켜버린다. 실제로는 클릭할 때도 브라우저가 미세한
+    // mousemove를 같이 발생시키는 경우가 많아, 이 값이 0이면 "클릭해도 노트가 안 열리는"
+    // 현상이 생긴다. 6px까지는 클릭으로 인정하도록 여유를 둔다.
+    .clickDistance(6)
+    .subject((event)=>{
+      const [x,y] = transform.invert(d3.pointer(event, canvas));
+      return nodeAt(x,y);
+    })
+    .on('start', (event)=>{
+      if (!event.active) state.simulation.alphaTarget(0.28).restart();
+      event.subject.fx = event.subject.x; event.subject.fy = event.subject.y;
+    })
+    .on('drag', (event)=>{
+      const [x,y] = transform.invert(d3.pointer(event, canvas));
+      event.subject.fx = x; event.subject.fy = y;
+    })
+    .on('end', (event)=>{
+      if (!event.active) state.simulation.alphaTarget(0);
+      event.subject.fx = null; event.subject.fy = null;
+    });
+  d3.select(canvas).call(drag);
+
+  canvas.addEventListener('click', (event)=>{
+    const [x,y] = transform.invert(d3.pointer(event, canvas));
+    const n = nodeAt(x,y);
+    if (!n) return;
+    if (n.ghost){
+      createNoteWithTitle(n.title, true);
+      switchTab('editor');
+    } else {
+      selectGraphNode(n.id);
+    }
+  });
+
+  // 마우스를 올리면 그 노드의 라벨과 테두리를 강조한다 — 평소엔 라벨을 다 켜두면
+  // 노드가 많을 때 서로 겹쳐 연결 구조를 알아보기 어려워지므로, 기본은 숨겨두고
+  // 호버(또는 확대/허브 노드/열린 노트)일 때만 보여준다.
+  canvas.addEventListener('mousemove', (event)=>{
+    const [x,y] = transform.invert(d3.pointer(event, canvas));
+    const n = nodeAt(x,y);
+    hoveredNodeId = n ? n.id : null;
+    canvas.style.cursor = n ? 'pointer' : 'grab';
+  });
+  canvas.addEventListener('mouseleave', ()=>{ hoveredNodeId = null; });
+
+  $('#resetZoomBtn').addEventListener('click', fitGraphToView);
+}
+
+function fitGraphToView(){
+  const nodes = state.graphNodes.filter(n=>typeof n.x==='number');
+  if (!nodes.length) return;
+  const xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y);
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const w = Math.max(maxX-minX, 40), h = Math.max(maxY-minY, 40);
+  const rect = canvas.getBoundingClientRect();
+  const scale = Math.min(rect.width/w, rect.height/h, 3) * 0.85;
+  const tx = rect.width/2 - scale*(minX+maxX)/2;
+  const ty = rect.height/2 - scale*(minY+maxY)/2;
+  d3.select(canvas).transition().duration(450)
+    .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
+}
+
+/* ---------------------------------------------------------------------
+   5) Gemini API RAG
+--------------------------------------------------------------------- */
+async function askAI(question){
+  if (state.chatBusy) return;
+  if (!state.settings.apiKey){
+    showToast('설정에서 Gemini API 키를 먼저 등록해주세요.');
+    openSettings();
+    return;
+  }
+  const log = $('#chatLog');
+  const empty = log.querySelector('.chat-empty'); if (empty) empty.remove();
+
+  appendChatBubble('user', question);
+  const results = searchNotes(question, 5);
+  const contextNotes = results.map(r=>state.idx.byId.get(r.id)).filter(Boolean);
+
+  const aiBubble = appendChatBubble('ai', '생각하는 중…');
+  state.chatBusy = true; $('#chatSendBtn').disabled = true;
+
+  try{
+    const contextText = contextNotes.length
+      ? contextNotes.map(n=>'### '+n.title+'\n'+(n.content||'').slice(0,2200)).join('\n\n---\n\n')
+      : '(관련된 노트를 찾지 못했습니다.)';
+    const prompt =
+      '당신은 사용자의 개인 노트 보관함을 근거로 답하는 도우미입니다. ' +
+      '아래 노트 내용에서만 근거를 찾아 한국어로 답하세요. 노트에 없는 내용은 추측하지 말고 모른다고 말하세요.\n\n' +
+      '[관련 노트]\n' + contextText + '\n\n[질문]\n' + question;
+
+    const model = state.settings.model || 'gemini-3.6-flash';
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':streamGenerateContent?alt=sse';
+    const resp = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-goog-api-key': state.settings.apiKey },
+      body: JSON.stringify({ contents:[{ role:'user', parts:[{ text: prompt }] }] })
+    });
+    if (!resp.ok || !resp.body){
+      const errText = await resp.text().catch(()=> '');
+      throw new Error('HTTP '+resp.status+' '+errText.slice(0,180));
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', answer = '';
+    while (true){
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream:true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines){
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try{
+          const obj = JSON.parse(payload);
+          const parts = obj?.candidates?.[0]?.content?.parts || [];
+          const t = parts.map(p=>p.text||'').join('');
+          if (t){ answer += t; setBubbleText(aiBubble, answer); }
+        }catch(e){ /* SSE 조각 파싱 실패는 무시하고 다음 라인 대기 */ }
+      }
+    }
+    if (!answer) setBubbleText(aiBubble, '(응답이 비어 있습니다. 모델명 또는 API 키를 확인해주세요.)');
+    if (contextNotes.length) appendSourceChips(aiBubble, contextNotes);
+  }catch(err){
+    setBubbleText(aiBubble, '⚠ 요청 실패: '+err.message);
+  }finally{
+    state.chatBusy = false; $('#chatSendBtn').disabled = false;
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+function appendChatBubble(role, text){
+  const log = $('#chatLog');
+  const div = document.createElement('div');
+  div.className = 'chat-bubble ' + role;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+function setBubbleText(bubble, text){
+  bubble.textContent = text;
+  $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
+}
+function appendSourceChips(bubble, notes){
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-sources';
+  for (const n of notes){
+    const chip = document.createElement('span');
+    chip.className = 'chat-source-chip';
+    chip.textContent = '📄 ' + n.title;
+    chip.onclick = ()=>{ openNote(n.id); switchTab('editor'); };
+    wrap.appendChild(chip);
+  }
+  bubble.appendChild(wrap);
+}
+
+/* ---------------------------------------------------------------------
+   6) 구글 드라이브 연동 · 로컬 폴더 연동
+   둘 다 노트를 .md 파일(프런트매터: id/title/tags/folder/created/updated,
+   삭제된 노트면 deleted도)로 저장한다는 점에서 같은 방식이다 — 그래서
+   변환 함수(noteToMarkdown/parseMarkdownFile, 아래 UI 컨트롤러 섹션에 있음)를
+   그대로 같이 쓴다.
+
+   구글 드라이브: Notion과 달리 CORS를 지원해서 중계 서버가 필요 없다.
+   Google Identity Services로 OAuth 액세스 토큰만 받으면 브라우저에서 바로
+   드라이브 API를 호출할 수 있다. 토큰은 메모리에만 있고(짧은 수명, ~1시간)
+   저장소에 남기지 않는다.
+
+   로컬 폴더: File System Access API(크롬/엣지 데스크톱 전용)로 사용자가 고른
+   폴더에 직접 읽고 쓴다. 고른 폴더의 핸들은 IndexedDB에 저장해 다음에 열 때도
+   기억하되, 브라우저 정책상 실제 접근은 사용자가 버튼을 눌러야(제스처) 권한을
+   다시 확인한다.
+
+   두 경우 모두 노트별 동기화 시각(driveSyncedAt / localSyncedAt)과 마지막으로
+   알려진 원격 식별자(driveFileId / localFileName)를 저장해 3-way 비교로
+   충돌을 감지한다:
+     - 원격만 바뀜 → 로컬에 반영
+     - 로컬만 바뀜 → 원격에 반영
+     - 둘 다 바뀜(충돌) → 원격 내용은 "(충돌 사본)" 새 노트로 보관하고, 이 기기
+       내용을 원격에 반영(로컬을 정본으로 취급)
+   휴지통 노트와 원격 쪽 삭제는 동기화하지 않는다.
+--------------------------------------------------------------------- */
+function formatSyncTime(ts){
+  if (!ts) return '아직 동기화하지 않았습니다.';
+  return '마지막 동기화: ' + new Date(ts).toLocaleString('ko-KR');
+}
+
+function uniqueSyncFilename(title, usedNames){
+  const base = sanitizeFilename(title);
+  let name = base + '.md';
+  if (!usedNames.has(name)){ usedNames.add(name); return name; }
+  let i = 2;
+  while (usedNames.has(base+'-'+i+'.md')) i++;
+  name = base+'-'+i+'.md';
+  usedNames.add(name);
+  return name;
+}
+
+/* ----------------------------- 구글 드라이브 ----------------------------- */
+
+const GoogleDrive = {
+  tokenClient: null,
+  accessToken: null,
+  tokenExpiresAt: 0,
+
+  ensureTokenClient(){
+    if (this.tokenClient) return;
+    if (!window.google || !google.accounts || !google.accounts.oauth2){
+      throw new Error('구글 로그인 스크립트를 아직 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+    }
+    const clientId = (state.settings.driveClientId||'').trim();
+    if (!clientId) throw new Error('구글 클라이언트 ID를 먼저 입력하세요.');
+    this.tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: ()=>{},
+    });
+  },
+
+  async ensureAccessToken(){
+    this.ensureTokenClient();
+    if (this.accessToken && Date.now() < this.tokenExpiresAt - 30000) return this.accessToken;
+    return new Promise((resolve, reject)=>{
+      this.tokenClient.callback = (resp)=>{
+        if (resp.error){ reject(new Error('구글 로그인 실패: '+resp.error)); return; }
+        this.accessToken = resp.access_token;
+        this.tokenExpiresAt = Date.now() + (resp.expires_in||3600)*1000;
+        resolve(this.accessToken);
+      };
+      this.tokenClient.requestAccessToken({ prompt: this.accessToken ? '' : 'consent' });
+    });
+  },
+
+  async request(url, options={}){
+    const token = await this.ensureAccessToken();
+    const res = await fetch(url, {
+      method: options.method || 'GET',
+      headers: Object.assign({ 'Authorization': 'Bearer '+token }, options.headers||{}),
+      body: options.body,
+    });
+    if (!res.ok){
+      const errText = await res.text().catch(()=> '');
+      throw new Error('구글 드라이브 API 오류 (HTTP '+res.status+') '+errText.slice(0,200));
+    }
+    return res;
+  },
+
+  async ensureFolder(name){
+    const safe = name.replace(/'/g, "\\'");
+    const q = encodeURIComponent(`name='${safe}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
+    const data = await res.json();
+    if (data.files && data.files.length) return data.files[0].id;
+    const createRes = await this.request('https://www.googleapis.com/drive/v3/files', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ name, mimeType:'application/vnd.google-apps.folder' }),
+    });
+    const created = await createRes.json();
+    return created.id;
+  },
+
+  async listFiles(folderId){
+    let files = [], pageToken;
+    do{
+      const q = encodeURIComponent(`'${folderId}' in parents and trashed=false and name contains '.md'`);
+      const pt = pageToken ? '&pageToken='+encodeURIComponent(pageToken) : '';
+      const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name,modifiedTime)&pageSize=200'+pt);
+      const data = await res.json();
+      files = files.concat(data.files||[]);
+      pageToken = data.nextPageToken;
+    } while(pageToken);
+    return files;
+  },
+
+  async getFileText(fileId){
+    const res = await this.request('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media');
+    return res.text();
+  },
+
+  buildMultipart(boundary, metadata, content){
+    return '--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+'\r\n'
+      + '--'+boundary+'\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n'+content+'\r\n'
+      + '--'+boundary+'--';
+  },
+
+  async createFile(folderId, filename, content){
+    const boundary = '-------kgnotes'+Date.now();
+    const body = this.buildMultipart(boundary, { name:filename, parents:[folderId], mimeType:'text/markdown' }, content);
+    const res = await this.request('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method:'POST', headers:{ 'Content-Type':'multipart/related; boundary='+boundary }, body,
+    });
+    const data = await res.json();
+    return data.id;
+  },
+
+  async updateFile(fileId, filename, content){
+    const boundary = '-------kgnotes'+Date.now();
+    const body = this.buildMultipart(boundary, { name:filename }, content);
+    await this.request('https://www.googleapis.com/upload/drive/v3/files/'+fileId+'?uploadType=multipart', {
+      method:'PATCH', headers:{ 'Content-Type':'multipart/related; boundary='+boundary }, body,
+    });
+  },
+};
+
+async function syncWithDrive(){
+  const statusEl = $('#driveSyncStatus');
+  const btn = $('#driveSyncBtn');
+  const folderName = (state.settings.driveFolderName||'').trim() || '연결 노트';
+  if (!(state.settings.driveClientId||'').trim()){
+    showToast('구글 클라이언트 ID를 먼저 입력해주세요.');
+    return;
+  }
+  btn.disabled = true;
+  statusEl.textContent = '구글 드라이브에 연결하는 중…';
+  try{
+    await GoogleDrive.ensureAccessToken();
+    const folderId = await GoogleDrive.ensureFolder(folderName);
+    state.settings.driveFolderId = folderId;
+
+    statusEl.textContent = '드라이브에서 파일 목록 가져오는 중…';
+    const remoteFiles = await GoogleDrive.listFiles(folderId);
+    const localByDriveId = new Map(state.notes.filter(n=>n.driveFileId).map(n=>[n.driveFileId, n]));
+    const seenDriveIds = new Set();
+    const now = Date.now();
+    let pulled=0, created=0, pushed=0, conflicts=0;
+
+    for (const f of remoteFiles){
+      seenDriveIds.add(f.id);
+      const remoteEditedAt = new Date(f.modifiedTime).getTime();
+      let local = localByDriveId.get(f.id);
+
+      if (!local){
+        statusEl.textContent = '"'+f.name+'" 가져오는 중…';
+        const parsed = parseMarkdownFile(f.name, await GoogleDrive.getFileText(f.id));
+        const existing = state.notes.find(n=>n.id===parsed.id);
+        if (existing){
+          existing.title=parsed.title; existing.content=parsed.content; existing.tags=parsed.tags; existing.folder=parsed.folder;
+          existing.driveFileId=f.id; existing.driveSyncedAt=now; existing.updatedAt=now;
+          Ledger.append([ makeEvent('note.edit', existing.id, { title:existing.title, content:existing.content, tags:existing.tags }, 'sync') ]);
+        } else {
+          const note = { id:(parsed.id || uid()), title:parsed.title, content:parsed.content, tags:parsed.tags, folder:parsed.folder,
+            createdAt:parsed.createdAt||now, updatedAt:now, deletedAt:parsed.deletedAt||null,
+            driveFileId:f.id, driveSyncedAt:now, localFileName:null, localSyncedAt:null };
+          state.notes.push(note);
+          Ledger.append([ makeEvent('note.create', note.id, { title:note.title, content:note.content, tags:note.tags }, 'sync') ]);
+        }
+        pulled++;
+        continue;
+      }
+      const localChanged = local.updatedAt > (local.driveSyncedAt || 0);
+      const remoteChanged = remoteEditedAt > (local.driveSyncedAt || 0);
+      if (remoteChanged && !localChanged){
+        statusEl.textContent = '"'+local.title+'" 갱신 반영 중…';
+        const parsed = parseMarkdownFile(f.name, await GoogleDrive.getFileText(f.id));
+        local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=parsed.folder;
+        local.updatedAt=now; local.driveSyncedAt=now;
+        Ledger.append([ makeEvent('note.edit', local.id, { title:local.title, content:local.content, tags:local.tags }, 'sync') ]);
+        pulled++;
+      } else if (remoteChanged && localChanged){
+        statusEl.textContent = '"'+local.title+'" 충돌 처리 중…';
+        const parsed = parseMarkdownFile(f.name, await GoogleDrive.getFileText(f.id));
+        const dupe = { id:uid(), title:parsed.title+' (드라이브 충돌 사본)', content:parsed.content, tags:parsed.tags, folder:parsed.folder,
+          createdAt:now, updatedAt:now, deletedAt:null, driveFileId:null, driveSyncedAt:null, localFileName:null, localSyncedAt:null };
+        state.notes.push(dupe);
+        Ledger.append([ makeEvent('note.create', dupe.id, { title:dupe.title, content:dupe.content, tags:dupe.tags }, 'sync') ]);
+        conflicts++;
+      }
+    }
+
+    const usedNames = new Set(remoteFiles.map(f=>f.name));
+    for (const note of state.notes){
+      if (note.deletedAt) continue;
+      if (!note.driveFileId){
+        statusEl.textContent = '"'+note.title+'" 드라이브에 올리는 중…';
+        const filename = uniqueSyncFilename(note.title, usedNames);
+        const fileId = await GoogleDrive.createFile(folderId, filename, noteToMarkdown(note));
+        note.driveFileId = fileId; note.driveSyncedAt = Date.now();
+        created++;
+        continue;
+      }
+      if (!seenDriveIds.has(note.driveFileId)) continue;
+      if (note.updatedAt > (note.driveSyncedAt || 0)){
+        statusEl.textContent = '"'+note.title+'" 드라이브에 반영 중…';
+        await GoogleDrive.updateFile(note.driveFileId, sanitizeFilename(note.title)+'.md', noteToMarkdown(note));
+        note.driveSyncedAt = Date.now();
+        pushed++;
+      }
+    }
+
+    await Store.saveAll(state.notes);
+    reindex(); renderNoteList(); renderEditor(); rebuildGraphSimulation();
+    await refreshStorageMeter();
+    state.settings.driveLastSync = Date.now();
+    await Store.saveSettings(state.settings);
+
+    const parts = [];
+    if (pulled) parts.push('가져옴 '+pulled);
+    if (created) parts.push('새로 올림 '+created);
+    if (pushed) parts.push('반영함 '+pushed);
+    if (conflicts) parts.push('충돌 '+conflicts);
+    const summary = parts.length ? parts.join(' · ') : '변경 사항 없음';
+    statusEl.textContent = formatSyncTime(state.settings.driveLastSync) + ' · ' + summary;
+    showToast('구글 드라이브 동기화 완료 ('+summary+')', 4000);
+  }catch(e){
+    statusEl.textContent = '동기화 실패: ' + e.message;
+    showToast('구글 드라이브 동기화 실패: ' + e.message, 5000);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/* ------------------------------- 로컬 폴더 ------------------------------- */
+
+const HandleStore = {
+  dbPromise: null,
+  db(){
+    if (this.dbPromise) return this.dbPromise;
+    this.dbPromise = new Promise((resolve, reject)=>{
+      const req = indexedDB.open('kg-notes-handles', 1);
+      req.onupgradeneeded = ()=> req.result.createObjectStore('handles');
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+    return this.dbPromise;
+  },
+  async get(key){
+    const db = await this.db();
+    return new Promise((resolve, reject)=>{
+      const req = db.transaction('handles','readonly').objectStore('handles').get(key);
+      req.onsuccess = ()=> resolve(req.result||null);
+      req.onerror = ()=> reject(req.error);
+    });
+  },
+  async set(key, value){
+    const db = await this.db();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction('handles','readwrite');
+      tx.objectStore('handles').put(value, key);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  },
+};
+
+const LocalFolder = {
+  handle: null,
+
+  async pick(){
+    if (!window.showDirectoryPicker){
+      throw new Error('이 브라우저는 로컬 폴더 기능을 지원하지 않습니다 (크롬·엣지 데스크톱에서 사용해주세요).');
+    }
+    this.handle = await window.showDirectoryPicker();
+    await HandleStore.set('local-folder', this.handle);
+    return this.handle;
+  },
+
+  async restore(){
+    if (this.handle) return this.handle;
+    const handle = await HandleStore.get('local-folder');
+    if (!handle) return null;
+    const perm = await handle.queryPermission({ mode:'readwrite' });
+    if (perm === 'granted'){ this.handle = handle; return handle; }
+    return null; // 권한이 없으면 사용자가 버튼을 눌러 다시 허용해야 함(브라우저 정책)
+  },
+
+  async reconnect(){
+    const handle = await HandleStore.get('local-folder');
+    if (!handle) throw new Error('선택된 폴더가 없습니다. 먼저 폴더를 선택하세요.');
+    const perm = await handle.requestPermission({ mode:'readwrite' });
+    if (perm !== 'granted') throw new Error('폴더 접근 권한이 거부되었습니다.');
+    this.handle = handle;
+    return handle;
+  },
+
+  async listMdFiles(){
+    const files = [];
+    for await (const [name, h] of this.handle.entries()){
+      if (h.kind === 'file' && /\.md$/i.test(name)) files.push({ name, handle:h });
+    }
+    return files;
+  },
+
+  async readFile(handle){
+    const file = await handle.getFile();
+    return { text: await file.text(), mtime: file.lastModified };
+  },
+
+  async writeFile(name, content){
+    const fh = await this.handle.getFileHandle(name, { create:true });
+    const w = await fh.createWritable();
+    await w.write(content);
+    await w.close();
+  },
+
+  async deleteFile(name){
+    try{ await this.handle.removeEntry(name); }catch(e){ /* 이미 없으면 무시 */ }
+  },
+};
+
+async function syncWithLocalFolder(){
+  const statusEl = $('#localFolderStatus');
+  const btn = $('#localFolderSyncBtn');
+  if (!LocalFolder.handle){
+    try{ await LocalFolder.reconnect(); }
+    catch(e){ showToast(e.message); return; }
+  }
+  btn.disabled = true;
+  statusEl.textContent = '폴더를 읽는 중…';
+  try{
+    const files = await LocalFolder.listMdFiles();
+    const localByFileName = new Map(state.notes.filter(n=>n.localFileName).map(n=>[n.localFileName, n]));
+    const seenNames = new Set();
+    const now = Date.now();
+    let pulled=0, created=0, pushed=0, conflicts=0;
+
+    for (const f of files){
+      seenNames.add(f.name);
+      const { text, mtime } = await LocalFolder.readFile(f.handle);
+      const parsed = parseMarkdownFile(f.name, text);
+      let local = localByFileName.get(f.name) || state.notes.find(n=>n.id===parsed.id);
+
+      if (!local){
+        const note = { id:(parsed.id || uid()), title:parsed.title, content:parsed.content, tags:parsed.tags, folder:parsed.folder,
+          createdAt:parsed.createdAt||now, updatedAt:now, deletedAt:parsed.deletedAt||null,
+          driveFileId:null, driveSyncedAt:null, localFileName:f.name, localSyncedAt:now };
+        state.notes.push(note);
+        Ledger.append([ makeEvent('note.create', note.id, { title:note.title, content:note.content, tags:note.tags }, 'sync') ]);
+        pulled++;
+        continue;
+      }
+      local.localFileName = f.name;
+      const localChanged = local.updatedAt > (local.localSyncedAt || 0);
+      const remoteChanged = mtime > (local.localSyncedAt || 0);
+      if (remoteChanged && !localChanged){
+        local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=parsed.folder;
+        local.updatedAt=now; local.localSyncedAt=now;
+        Ledger.append([ makeEvent('note.edit', local.id, { title:local.title, content:local.content, tags:local.tags }, 'sync') ]);
+        pulled++;
+      } else if (remoteChanged && localChanged){
+        const dupe = { id:uid(), title:parsed.title+' (로컬 충돌 사본)', content:parsed.content, tags:parsed.tags, folder:parsed.folder,
+          createdAt:now, updatedAt:now, deletedAt:null, driveFileId:null, driveSyncedAt:null, localFileName:null, localSyncedAt:null };
+        state.notes.push(dupe);
+        Ledger.append([ makeEvent('note.create', dupe.id, { title:dupe.title, content:dupe.content, tags:dupe.tags }, 'sync') ]);
+        conflicts++;
+      }
+    }
+
+    const usedNames = new Set(files.map(f=>f.name));
+    for (const note of state.notes){
+      if (note.deletedAt) continue;
+      if (!note.localFileName){
+        const filename = uniqueSyncFilename(note.title, usedNames);
+        await LocalFolder.writeFile(filename, noteToMarkdown(note));
+        note.localFileName = filename; note.localSyncedAt = Date.now();
+        created++;
+        continue;
+      }
+      if (!seenNames.has(note.localFileName)) continue;
+      if (note.updatedAt > (note.localSyncedAt || 0)){
+        await LocalFolder.writeFile(note.localFileName, noteToMarkdown(note));
+        note.localSyncedAt = Date.now();
+        pushed++;
+      }
+    }
+
+    await Store.saveAll(state.notes);
+    reindex(); renderNoteList(); renderEditor(); rebuildGraphSimulation();
+    await refreshStorageMeter();
+    state.settings.localFolderLastSync = Date.now();
+    await Store.saveSettings(state.settings);
+
+    const parts = [];
+    if (pulled) parts.push('가져옴 '+pulled);
+    if (created) parts.push('새로 저장 '+created);
+    if (pushed) parts.push('반영함 '+pushed);
+    if (conflicts) parts.push('충돌 '+conflicts);
+    const summary = parts.length ? parts.join(' · ') : '변경 사항 없음';
+    statusEl.textContent = formatSyncTime(state.settings.localFolderLastSync) + ' · ' + summary;
+    showToast('로컬 폴더 동기화 완료 ('+summary+')', 4000);
+  }catch(e){
+    statusEl.textContent = '동기화 실패: ' + e.message;
+    showToast('로컬 폴더 동기화 실패: ' + e.message, 5000);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   7) UI 컨트롤러
+--------------------------------------------------------------------- */
+function renderNoteList(){
+  const list = $('#noteList');
+  let items;
+  if (state.searchQuery){
+    items = state.searchResults.map(r=>({ note: state.idx.byId.get(r.id), score:r.score })).filter(x=>x.note);
+  } else {
+    let pool = state.notes.filter(n=>!n.deletedAt);
+    if (state.activeFolder === '__UNFILED__') pool = pool.filter(n=>!n.folder);
+    else if (state.activeFolder && state.activeFolder !== '__ALL__') pool = pool.filter(n=>n.folder===state.activeFolder);
+    items = pool.sort((a,b)=>b.updatedAt-a.updatedAt).map(n=>({note:n, score:null}));
+  }
+  list.innerHTML = '';
+  if (!items.length){
+    const empty = document.createElement('div');
+    empty.className = 'no-backlinks';
+    empty.style.padding = '10px 8px';
+    empty.textContent = state.searchQuery
+      ? '검색 결과가 없습니다.'
+      : (state.activeFolder && state.activeFolder !== '__ALL__' ? '이 폴더에는 아직 노트가 없습니다.' : '아직 노트가 없습니다. 새 노트를 만들어보세요.');
+    list.appendChild(empty);
+  }
+  for (const { note } of items){
+    const el = document.createElement('div');
+    el.className = 'note-item' + (note.id===state.activeId ? ' active' : '');
+    el.innerHTML = `<div class="ni-title">${escapeHtml(note.title||'제목 없음')}</div>
+                     <div class="ni-preview">${escapeHtml(buildPreview(note.content))}</div>`;
+    el.onclick = ()=>{ openNote(note.id); switchTab('editor'); };
+    list.appendChild(el);
+  }
+  const activeCount = state.notes.filter(n=>!n.deletedAt).length;
+  $('#noteCount').textContent = activeCount+'개 노트';
+  renderFolderList();
+}
+
+function renderFolderList(){
+  const wrap = $('#folderList');
+  if (!wrap) return;
+  const counts = new Map();
+  let unfiled = 0;
+  for (const n of state.notes){
+    if (n.deletedAt) continue;
+    if (n.folder) counts.set(n.folder, (counts.get(n.folder)||0)+1);
+    else unfiled++;
+  }
+  const total = state.notes.filter(n=>!n.deletedAt).length;
+  const folders = Array.from(counts.keys()).sort((a,b)=>a.localeCompare(b,'ko'));
+
+  wrap.innerHTML = '';
+  const makeItem = (key, label, count)=>{
+    const el = document.createElement('div');
+    el.className = 'folder-item' + (state.activeFolder===key ? ' active' : '');
+    el.innerHTML = `<span class="fi-name">${escapeHtml(label)}</span><span class="fi-count">${count}</span>`;
+    el.onclick = ()=>{ state.activeFolder = key; renderNoteList(); };
+    wrap.appendChild(el);
+  };
+  makeItem('__ALL__', '전체 노트', total);
+  for (const f of folders) makeItem(f, f, counts.get(f));
+  if (unfiled) makeItem('__UNFILED__', '미분류', unfiled);
+}
+
+function updateStorageModeBadge(){
+  const el = $('#storageModeBadge');
+  if (!el) return;
+  if (window.__LOCAL_SERVER_MODE__){
+    el.hidden = false;
+    el.classList.add('local');
+    el.textContent = '📁 로컬 폴더에 저장 중';
+    el.title = '이 기기의 notes 폴더에 .md 파일로 저장됩니다. 그 폴더에 직접 파일을 넣어도 됩니다.';
+  } else {
+    el.hidden = true;
+  }
+}
+
+function renderFolderOptions(){
+  const dl = $('#folderOptions');
+  if (!dl) return;
+  const names = Array.from(new Set(state.notes.filter(n=>!n.deletedAt && n.folder).map(n=>n.folder))).sort((a,b)=>a.localeCompare(b,'ko'));
+  dl.innerHTML = names.map(f=>`<option value="${escapeHtml(f)}"></option>`).join('');
+}
+
+function renderLinkPickerResults(query){
+  const box = $('#linkPickerResults');
+  const q = query.trim().toLowerCase();
+  if (!q){ box.hidden = true; box.innerHTML=''; return; }
+  const matches = state.notes
+    .filter(n=>!n.deletedAt && n.id!==state.activeId && (n.title||'').toLowerCase().includes(q))
+    .slice(0, 8);
+  box.innerHTML = matches.length ? '' : '<div class="link-picker-empty">일치하는 노트가 없습니다.</div>';
+  for (const n of matches){
+    const el = document.createElement('div');
+    el.className = 'link-picker-item';
+    el.textContent = n.title || '제목 없음';
+    el.onclick = ()=> insertWikilink(n.title);
+    box.appendChild(el);
+  }
+  box.hidden = false;
+}
+
+function hideLinkPicker(){
+  const box = $('#linkPickerResults');
+  if (box){ box.hidden = true; box.innerHTML=''; }
+  if ($('#linkPickerInput')) $('#linkPickerInput').value = '';
+}
+
+// 선택한 노트를 [[제목]] 형식으로 본문 커서 위치에 삽입한다 — 위키링크 문법을 직접
+// 외워 쓰지 않아도 목록에서 골라 연결할 수 있게 하기 위함.
+function insertWikilink(title){
+  const ta = $('#contentInput');
+  if (!ta || ta.disabled) return;
+  const text = '[['+title+']]';
+  const start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+  const end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+  const before = ta.value.slice(0, start);
+  const after = ta.value.slice(end);
+  const needsLeadingSpace = before.length > 0 && !/[\s\n]$/.test(before);
+  const insert = (needsLeadingSpace ? ' ' : '') + text;
+  ta.value = before + insert + after;
+  const caret = (before+insert).length;
+  hideLinkPicker();
+  touchActiveNoteFromInputs();
+  ta.focus();
+  ta.setSelectionRange(caret, caret);
+}
+
+function renderBacklinks(){
+  const wrap = $('#backlinksList');
+  wrap.innerHTML = '';
+  if (!state.activeId){ wrap.innerHTML = '<div class="no-backlinks">노트를 선택하세요.</div>'; return; }
+  const backs = [];
+  for (const n of state.notes){
+    if (n.id === state.activeId || n.deletedAt) continue;
+    for (const l of (state.idx.linksOf.get(n.id)||[])){
+      if (l.targetId === state.activeId){ backs.push(n); break; }
+    }
+  }
+  if (!backs.length){ wrap.innerHTML = '<div class="no-backlinks">아직 이 노트를 참조하는 노트가 없습니다.</div>'; return; }
+  for (const n of backs){
+    const el = document.createElement('div');
+    el.className = 'backlink-item';
+    el.textContent = '← ' + (n.title||'제목 없음');
+    el.onclick = ()=> openNote(n.id);
+    wrap.appendChild(el);
+  }
+}
+
+function renderEditor(){
+  const note = state.activeId ? state.idx.byId.get(state.activeId) : null;
+  $('#titleInput').value = note ? note.title : '';
+  $('#contentInput').value = note ? note.content : '';
+  $('#tagsInput').value = note ? (note.tags||[]).join(', ') : '';
+  $('#folderInput').value = note ? (note.folder||'') : '';
+  const disabled = !note;
+  $('#titleInput').disabled = disabled;
+  $('#contentInput').disabled = disabled;
+  $('#tagsInput').disabled = disabled;
+  $('#folderInput').disabled = disabled;
+  renderFolderOptions();
+  renderPreview();
+  renderBacklinks();
+  hideLinkPicker();
+}
+
+function renderPreview(){
+  const note = state.activeId ? state.idx.byId.get(state.activeId) : null;
+  $('#previewPane').innerHTML = note ? renderMarkdown(note.content) : '';
+}
+
+function setSaveStatus(text){
+  $('#saveStatus').textContent = text;
+}
+
+const persistProjection = debounce(async ()=>{
+  setSaveStatus('저장 중…');
+  const ok = await Store.saveAll(state.notes);
+  setSaveStatus(ok ? '저장됨' : '저장 실패');
+  setTimeout(()=>{ if ($('#saveStatus').textContent!=='저장 중…') setSaveStatus(''); }, 1500);
+}, 700);
+
+const persistEdit = debounce(async (note)=>{
+  setSaveStatus('저장 중…');
+  await Ledger.append([ makeEvent('note.edit', note.id, { title:note.title, content:note.content, tags:note.tags }) ]);
+  const ok = await Store.saveAll(state.notes);
+  setSaveStatus(ok ? '저장됨' : '저장 실패');
+  setTimeout(()=>{ if ($('#saveStatus').textContent!=='저장 중…') setSaveStatus(''); }, 1500);
+}, 700);
+
+function touchActiveNoteFromInputs(){
+  const note = state.idx.byId.get(state.activeId);
+  if (!note) return;
+  note.title = $('#titleInput').value || '제목 없음';
+  note.content = $('#contentInput').value;
+  note.tags = $('#tagsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+  note.folder = $('#folderInput').value.trim() || null;
+  note.updatedAt = Date.now();
+  reindex();
+  renderNoteList();
+  renderBacklinks();
+  renderFolderOptions();
+  renderPreview();
+  rebuildGraphSimulation();
+  setSaveStatus('편집 중…');
+  persistEdit(note);
+}
+
+function openNote(id){
+  closeGraphNotePanel();
+  state.activeId = id;
+  renderEditor();
+  renderNoteList();
+  closeSidebar();
+}
+
+// 그래프 뷰에서 노드를 클릭했을 때: 탭을 옮기지 않고 그래프 옆에 노트를 미리 보여주며,
+// 이 노드 + 직접 연결된 노드만 그래프에서 강조되도록 한다(currentHighlight 참고).
+function selectGraphNode(id){
+  const note = state.idx.byId.get(id);
+  if (!note) return;
+  state.activeId = id;
+  state.graphSelectedId = id;
+  $('#gnpTitle').textContent = note.title || '제목 없음';
+  const metaEl = $('#gnpMeta');
+  metaEl.innerHTML = '';
+  if (note.folder){
+    const f = document.createElement('span'); f.textContent = '📁 '+note.folder; metaEl.appendChild(f);
+  }
+  for (const t of (note.tags||[])){
+    const s = document.createElement('span'); s.textContent = '#'+t; metaEl.appendChild(s);
+  }
+  $('#gnpContent').innerHTML = renderMarkdown(note.content||'') || '<span style="color:var(--text-faint)">(내용 없음)</span>';
+  $('#graphNotePanel').classList.add('open');
+  renderNoteList();
+}
+
+function closeGraphNotePanel(){
+  state.graphSelectedId = null;
+  const panel = $('#graphNotePanel');
+  if (panel) panel.classList.remove('open');
+}
+
+function openSidebar(){
+  $('#sidebar').classList.add('open');
+  $('#sidebarBackdrop').classList.add('show');
+}
+function closeSidebar(){
+  $('#sidebar').classList.remove('open');
+  $('#sidebarBackdrop').classList.remove('show');
+}
+function toggleSidebar(){
+  $('#sidebar').classList.contains('open') ? closeSidebar() : openSidebar();
+}
+
+function createNoteWithTitle(title, openIt){
+  const now = Date.now();
+  const note = { id: uid(), title: title || '제목 없음', content:'', tags:[], folder:null, createdAt:now, updatedAt:now, deletedAt:null, driveFileId:null, driveSyncedAt:null, localFileName:null, localSyncedAt:null };
+  state.notes.push(note);
+  reindex();
+  rebuildGraphSimulation();
+  renderNoteList();
+  Ledger.append([ makeEvent('note.create', note.id, { title:note.title, content:note.content, tags:note.tags }) ]);
+  persistProjection();
+  if (openIt !== false) openNote(note.id);
+  return note;
+}
+
+function deleteNote(id){
+  const note = state.idx.byId.get(id);
+  if (!note) return;
+  if (!confirm('"'+note.title+'" 노트를 휴지통으로 이동할까요? 휴지통에서 복원할 수 있습니다.')) return;
+  note.deletedAt = Date.now();
+  if (state.activeId===id) state.activeId = null;
+  reindex();
+  rebuildGraphSimulation();
+  renderNoteList();
+  renderEditor();
+  Ledger.append([ makeEvent('note.delete', id, {}) ]);
+  persistProjection();
+  showToast('휴지통으로 이동했습니다.');
+}
+
+function restoreNote(id){
+  const note = state.notes.find(n=>n.id===id);
+  if (!note) return;
+  note.deletedAt = null;
+  reindex();
+  rebuildGraphSimulation();
+  renderNoteList();
+  renderTrash();
+  Ledger.append([ makeEvent('note.restore', id, {}) ]);
+  persistProjection();
+  showToast('노트를 복원했습니다.');
+}
+
+function purgeNote(id){
+  const note = state.notes.find(n=>n.id===id);
+  if (!note) return;
+  if (!confirm('"'+note.title+'"을(를) 완전히 삭제하면 되돌릴 수 없습니다. 계속할까요?')) return;
+  state.notes = state.notes.filter(n=>n.id!==id);
+  reindex();
+  rebuildGraphSimulation();
+  renderTrash();
+  renderNoteList();
+  persistProjection();
+  showToast('영구 삭제했습니다.');
+}
+
+function renderTrash(){
+  const wrap = $('#trashList');
+  const trashed = state.notes.filter(n=>n.deletedAt).sort((a,b)=>b.deletedAt-a.deletedAt);
+  wrap.innerHTML = '';
+  if (!trashed.length){ wrap.innerHTML = '<div class="no-backlinks">휴지통이 비어 있습니다.</div>'; return; }
+  for (const n of trashed){
+    const el = document.createElement('div');
+    el.className = 'backlink-item';
+    el.style.cssText = 'display:flex; justify-content:space-between; align-items:center; cursor:default;';
+    const label = document.createElement('span');
+    label.textContent = n.title || '제목 없음';
+    label.style.overflow='hidden'; label.style.textOverflow='ellipsis'; label.style.whiteSpace='nowrap';
+    const btns = document.createElement('span');
+    btns.style.cssText = 'display:flex; gap:6px; flex-shrink:0;';
+    const restoreBtn = document.createElement('button');
+    restoreBtn.textContent = '복원';
+    restoreBtn.style.cssText = 'font-size:11px; background:var(--bg-input); border:1px solid var(--border); color:var(--cyan); border-radius:6px; padding:3px 8px;';
+    restoreBtn.onclick = ()=> restoreNote(n.id);
+    const purgeBtn = document.createElement('button');
+    purgeBtn.textContent = '영구삭제';
+    purgeBtn.style.cssText = 'font-size:11px; background:var(--bg-input); border:1px solid var(--border); color:var(--danger); border-radius:6px; padding:3px 8px;';
+    purgeBtn.onclick = ()=> purgeNote(n.id);
+    btns.appendChild(restoreBtn); btns.appendChild(purgeBtn);
+    el.appendChild(label); el.appendChild(btns);
+    wrap.appendChild(el);
+  }
+}
+
+function openHistoryModal(){
+  if (!state.activeId){ showToast('먼저 노트를 선택하세요.'); return; }
+  const events = Ledger.eventsForNote(state.activeId);
+  const wrap = $('#historyList');
+  wrap.innerHTML = '';
+  if (!events.length){ wrap.innerHTML = '<div class="no-backlinks">이 노트는 아직 이력이 없습니다 (v1에서 가져온 노트일 수 있습니다).</div>'; }
+  for (const ev of [...events].reverse()){
+    const el = document.createElement('div');
+    el.className = 'backlink-item';
+    el.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
+    const label = (ev.type==='note.create') ? '생성' : (ev.type==='note.edit') ? '수정' : ev.type;
+    const left = document.createElement('span');
+    left.textContent = label + ' · ' + new Date(ev.ts).toLocaleString('ko-KR');
+    const restoreBtn = document.createElement('button');
+    restoreBtn.textContent = '이 시점으로 복원';
+    restoreBtn.style.cssText = 'font-size:11px; background:var(--bg-input); border:1px solid var(--border); color:var(--cyan); border-radius:6px; padding:3px 8px; flex-shrink:0;';
+    restoreBtn.onclick = ()=>{
+      if (!confirm(new Date(ev.ts).toLocaleString('ko-KR')+' 시점으로 되돌릴까요? (현재 내용도 새 이력으로 남습니다)')) return;
+      $('#titleInput').value = ev.payload.title || '';
+      $('#contentInput').value = ev.payload.content || '';
+      $('#tagsInput').value = (ev.payload.tags||[]).join(', ');
+      touchActiveNoteFromInputs();
+      closeHistory();
+      showToast('이전 버전으로 복원했습니다.');
+    };
+    el.appendChild(left); el.appendChild(restoreBtn);
+    wrap.appendChild(el);
+  }
+  $('#historyModal').hidden = false;
+}
+function closeHistory(){ $('#historyModal').hidden = true; }
+
+function switchTab(tab){
+  $$('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  $$('.view').forEach(v=>v.classList.remove('active'));
+  $('#view-'+tab).classList.add('active');
+  if (tab==='graph'){ resizeGraphCanvas(); rebuildGraphSimulation(); startGraphLoop(); }
+  else stopGraphLoop();
+}
+
+function runSearch(query){
+  state.searchQuery = query.trim();
+  state.searchResults = state.searchQuery ? searchNotes(state.searchQuery, 300) : [];
+  renderNoteList();
+}
+
+function openSettings(){
+  $('#apiKeyInput').value = state.settings.apiKey || '';
+  $('#modelInput').value = state.settings.model || 'gemini-3.6-flash';
+  $('#themeToggle').checked = state.theme === 'light';
+  $('#driveClientIdInput').value = state.settings.driveClientId || '';
+  $('#driveFolderNameInput').value = state.settings.driveFolderName || '연결 노트';
+  $('#driveSyncStatus').textContent = formatSyncTime(state.settings.driveLastSync);
+  $('#localFolderStatus').textContent = LocalFolder.handle
+    ? formatSyncTime(state.settings.localFolderLastSync)
+    : '아직 폴더를 선택하지 않았습니다.';
+  refreshStorageMeter();
+  $('#settingsModal').hidden = false;
+}
+function closeSettings(){ $('#settingsModal').hidden = true; }
+
+function applyTheme(theme){
+  state.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme==='light' ? 'light' : '');
+}
+
+async function generateSampleNotes(n){
+  const topics = ['교육 심리학','디지털 리터러시','국어 문법','수업 설계','평가 방법','메타인지','협동학습','프로젝트 수업','읽기 전략','글쓰기 지도','AI 활용 수업','피드백 전략'];
+  const sentences = [
+    '학생들의 이해도를 높이기 위한 다양한 접근이 필요하다.',
+    '수업 설계 시 학습자의 사전 지식을 고려해야 한다.',
+    '평가는 학습의 과정과 결과를 모두 반영해야 한다.',
+    '메타인지 전략은 자기주도적 학습 능력을 키운다.',
+    '협동학습은 또래 간 상호작용을 통해 이해를 심화시킨다.',
+    'AI 도구는 개별화된 피드백을 제공하는 데 유용하다.',
+    '읽기 전략은 텍스트의 구조를 파악하는 데서 시작된다.',
+    '글쓰기 지도는 초안, 피드백, 수정을 반복하는 과정이 핵심이다.'
+  ];
+  const t0 = performance.now();
+  const base = state.notes.length;
+  const batch = [];
+  for (let i=0;i<n;i++){
+    const topic = topics[i % topics.length];
+    const linkIdx = [];
+    if (i>0) linkIdx.push(i-1);
+    for (let k=0;k<2;k++){ const j = Math.floor(Math.random()*i); if (i>0 && !linkIdx.includes(j)) linkIdx.push(j); }
+    const body = Array.from({length:3}, ()=> sentences[Math.floor(Math.random()*sentences.length)]).join(' ');
+    // 링크 텍스트는 대상 노트의 "전체 제목"(주제 포함)과 정확히 일치해야 위키링크가
+    // 해석된다. 예전엔 '[[샘플 노트 3]]'처럼 주제 없이 적어 실제 제목('샘플 노트 3 — …')과
+    // 어긋나는 바람에 모든 링크가 미해결(ghost)로 남아 그래프에 연결이 하나도 안 잡히는
+    // 버그가 있었다.
+    const linkText = linkIdx.map(j=>'[[샘플 노트 '+(j+1)+' — '+topics[j % topics.length]+']]').join(', ');
+    batch.push({
+      id: 'sample-'+base+'-'+i+'-'+Date.now().toString(36),
+      title: '샘플 노트 '+(i+1)+' — '+topic,
+      content: '# '+topic+'\n\n'+body+'\n\n관련 노트: '+linkText,
+      tags: [topic], folder: topic, createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null
+    });
+  }
+  state.notes = state.notes.concat(batch);
+  reindex();
+  rebuildGraphSimulation();
+  renderNoteList();
+  // 성능 테스트용 샘플은 휘발성 데이터이므로 NoteLedger에는 기록하지 않는다(이력 원장이 불필요하게 커지는 것을 방지).
+  await Store.saveAll(state.notes);
+  const ms = (performance.now()-t0).toFixed(0);
+  showToast('샘플 노트 '+n+'개 생성 완료 (인덱싱 '+state.idx.elapsedMs.toFixed(1)+'ms, 전체 '+ms+'ms)', 4500);
+}
+
+function deleteSampleNotes(){
+  const before = state.notes.length;
+  state.notes = state.notes.filter(n=>!n.id.startsWith('sample-'));
+  const removed = before - state.notes.length;
+  if (state.activeId && !state.idx.byId.has(state.activeId)) state.activeId = null;
+  reindex();
+  rebuildGraphSimulation();
+  renderNoteList(); renderEditor();
+  persistProjection();
+  showToast(removed+'개의 샘플 노트를 삭제했습니다.');
+}
+
+function exportNotesJson(){
+  const data = JSON.stringify({ exportedAt: new Date().toISOString(), notes: state.notes.filter(n=>!n.deletedAt) }, null, 2);
+  const blob = new Blob([data], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'yeongyeol-notes-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importNotesJson(file){
+  const reader = new FileReader();
+  reader.onload = async ()=>{
+    try{
+      const parsed = JSON.parse(reader.result);
+      const incoming = Array.isArray(parsed) ? parsed : (parsed.notes || []);
+      if (!Array.isArray(incoming)) throw new Error('형식이 올바르지 않습니다.');
+      const existingIds = new Set(state.notes.map(n=>n.id));
+      let added = 0;
+      const newEvents = [];
+      for (const n of incoming){
+        if (!n || !n.id || existingIds.has(n.id)) continue;
+        const note = {
+          id:n.id, title:n.title||'제목 없음', content:n.content||'',
+          tags:Array.isArray(n.tags)?n.tags:[], createdAt:n.createdAt||Date.now(), updatedAt:n.updatedAt||Date.now(), deletedAt:null
+        };
+        state.notes.push(note);
+        newEvents.push(makeEvent('note.create', note.id, { title:note.title, content:note.content, tags:note.tags, migrated:true }));
+        added++;
+      }
+      reindex(); rebuildGraphSimulation(); renderNoteList();
+      await Ledger.append(newEvents);
+      await Store.saveAll(state.notes);
+      showToast(added+'개의 노트를 가져왔습니다 (이력 원장에도 기록됨).');
+    }catch(e){ showToast('가져오기 실패: '+e.message); }
+  };
+  reader.readAsText(file);
+}
+
+function sanitizeFilename(name){
+  return String(name || '제목 없음').replace(/[\\/:*?"<>|]/g,'_').trim().slice(0,80) || '제목 없음';
+}
+
+function noteToMarkdown(note){
+  const tags = (note.tags||[]).join(', ');
+  const created = new Date(note.createdAt||Date.now()).toISOString();
+  const updated = new Date(note.updatedAt||Date.now()).toISOString();
+  return '---\n'
+    + 'id: ' + note.id + '\n'
+    + 'title: ' + (note.title||'제목 없음') + '\n'
+    + 'tags: [' + tags + ']\n'
+    + (note.folder ? 'folder: ' + note.folder + '\n' : '')
+    + 'created: ' + created + '\n'
+    + 'updated: ' + updated + '\n'
+    + (note.deletedAt ? 'deleted: ' + new Date(note.deletedAt).toISOString() + '\n' : '')
+    + '---\n\n'
+    + (note.content||'');
+}
+
+async function exportNotesAsMarkdownZip(){
+  if (typeof JSZip === 'undefined'){ showToast('ZIP 라이브러리를 불러오지 못했습니다. 네트워크 상태를 확인해주세요.'); return; }
+  if (!state.notes.length){ showToast('내보낼 노트가 없습니다.'); return; }
+  const zip = new JSZip();
+  const usedNames = new Map();
+  for (const n of state.notes){
+    const base = sanitizeFilename(n.title);
+    const count = usedNames.get(base) || 0;
+    usedNames.set(base, count+1);
+    const filename = (count>0 ? base+'-'+(count+1) : base) + '.md';
+    zip.file(filename, noteToMarkdown(n));
+  }
+  showToast('ZIP 생성 중… ('+state.notes.length+'개 노트)');
+  const blob = await zip.generateAsync({ type:'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'yeongyeol-notes-md-'+new Date().toISOString().slice(0,10)+'.zip';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast(state.notes.length+'개 노트를 .md 파일(.zip)로 내보냈습니다.');
+}
+
+function parseMarkdownFile(filename, text){
+  let title = filename.replace(/\.md$/i,'');
+  let content = text;
+  let tags = [];
+  let folder = null;
+  let id = null;
+  let createdAt = null, updatedAt = null, deletedAt = null;
+  const fmMatch = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (fmMatch){
+    const fmBlock = fmMatch[1];
+    content = fmMatch[2].replace(/^\n+/, '');
+    const titleMatch = fmBlock.match(/^title:\s*(.+)$/m);
+    if (titleMatch) title = titleMatch[1].trim();
+    const tagsMatch = fmBlock.match(/^tags:\s*\[(.*)\]$/m);
+    if (tagsMatch) tags = tagsMatch[1].split(',').map(s=>s.trim()).filter(Boolean);
+    const folderMatch = fmBlock.match(/^folder:\s*(.+)$/m);
+    if (folderMatch) folder = folderMatch[1].trim() || null;
+    const idMatch = fmBlock.match(/^id:\s*(.+)$/m);
+    if (idMatch) id = idMatch[1].trim() || null;
+    const createdMatch = fmBlock.match(/^created:\s*(.+)$/m);
+    if (createdMatch){ const d = new Date(createdMatch[1].trim()); if (!isNaN(d)) createdAt = d.getTime(); }
+    const updatedMatch = fmBlock.match(/^updated:\s*(.+)$/m);
+    if (updatedMatch){ const d = new Date(updatedMatch[1].trim()); if (!isNaN(d)) updatedAt = d.getTime(); }
+    const deletedMatch = fmBlock.match(/^deleted:\s*(.+)$/m);
+    if (deletedMatch){ const d = new Date(deletedMatch[1].trim()); if (!isNaN(d)) deletedAt = d.getTime(); }
+  }
+  const now = Date.now();
+  return {
+    id, title: title || '제목 없음', content, tags, folder,
+    createdAt: createdAt || now, updatedAt: updatedAt || now, deletedAt: deletedAt || null,
+  };
+}
+
+function importMarkdownFiles(fileList){
+  const files = Array.from(fileList).filter(f=>f.name.toLowerCase().endsWith('.md'));
+  if (!files.length){ showToast('.md 파일을 선택해주세요.'); return; }
+  let processed = 0;
+  const results = [];
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      const note = parseMarkdownFile(file.name, String(reader.result));
+      note.id = uid(); // 재가져오기 시 기존 노트와 id가 겹치지 않도록 항상 새로 발급
+      note.deletedAt = null;
+      note.driveFileId = null;
+      note.driveSyncedAt = null;
+      note.localFileName = null;
+      note.localSyncedAt = null;
+      results.push(note);
+      processed++;
+      if (processed === files.length){
+        state.notes = state.notes.concat(results);
+        reindex(); rebuildGraphSimulation(); renderNoteList();
+        const events = results.map(n=> makeEvent('note.create', n.id, { title:n.title, content:n.content, tags:n.tags, migrated:true, source:'md-import' }));
+        await Ledger.append(events);
+        await Store.saveAll(state.notes);
+        showToast(results.length+'개의 .md 파일을 가져왔습니다 (이력 원장에도 기록됨).');
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+/* ---------------------------------------------------------------------
+   8) 초기화 / 이벤트 바인딩
+--------------------------------------------------------------------- */
+async function init(){
+  state.settings = await Store.loadSettings();
+  applyTheme(state.settings.theme || 'dark');
+
+  await Ledger.loadAll();
+  state.notes = await Store.loadAll();
+  for (const n of state.notes){
+    if (n.deletedAt === undefined) n.deletedAt = null; // v1 노트 호환
+    if (n.driveFileId === undefined) n.driveFileId = null;
+    if (n.driveSyncedAt === undefined) n.driveSyncedAt = null;
+    if (n.localFileName === undefined) n.localFileName = null;
+    if (n.localSyncedAt === undefined) n.localSyncedAt = null;
+    if (n.folder === undefined) n.folder = null;
+  }
+  reindex();
+  renderNoteList();
+  renderEditor();
+  updateStorageModeBadge();
+
+  initGraph();
+  rebuildGraphSimulation();
+
+  // 모바일 사이드바
+  $('#menuBtn').addEventListener('click', toggleSidebar);
+  $('#sidebarBackdrop').addEventListener('click', closeSidebar);
+
+  // 탭
+  $$('.tab').forEach(btn=> btn.addEventListener('click', ()=>{ switchTab(btn.dataset.tab); closeSidebar(); }));
+
+  // 검색
+  $('#searchInput').addEventListener('input', (e)=> runSearch(e.target.value));
+
+  // 새 노트 / 편집기
+  $('#newNoteBtn').addEventListener('click', ()=> createNoteWithTitle('제목 없음'));
+  $('#titleInput').addEventListener('input', touchActiveNoteFromInputs);
+  $('#contentInput').addEventListener('input', touchActiveNoteFromInputs);
+  $('#tagsInput').addEventListener('input', touchActiveNoteFromInputs);
+  $('#folderInput').addEventListener('input', touchActiveNoteFromInputs);
+  $('#folderInput').addEventListener('change', renderFolderList);
+
+  // 관련 노트 연결(링크 피커)
+  $('#linkPickerInput').addEventListener('input', (e)=> renderLinkPickerResults(e.target.value));
+  $('#linkPickerInput').addEventListener('focus', (e)=>{ if (e.target.value.trim()) renderLinkPickerResults(e.target.value); });
+  document.addEventListener('click', (e)=>{ if (!e.target.closest('.link-picker')) hideLinkPicker(); });
+  $('#historyBtn').addEventListener('click', openHistoryModal);
+  $('#closeHistoryBtn').addEventListener('click', closeHistory);
+  $('#historyModal').addEventListener('click', (e)=>{ if (e.target.id==='historyModal') closeHistory(); });
+
+  $('#modeWriteBtn').addEventListener('click', ()=>{
+    state.editorMode='write';
+    $('#modeWriteBtn').classList.add('on'); $('#modePreviewBtn').classList.remove('on');
+    $('#contentInput').classList.remove('hidden-mode');
+    $('#previewPane').classList.remove('on');
+  });
+  $('#modePreviewBtn').addEventListener('click', ()=>{
+    state.editorMode='preview';
+    $('#modePreviewBtn').classList.add('on'); $('#modeWriteBtn').classList.remove('on');
+    $('#contentInput').classList.add('hidden-mode');
+    renderPreview();
+    $('#previewPane').classList.add('on');
+  });
+
+  // 위키링크 / 백링크 클릭 (미리보기 안)
+  $('#previewPane').addEventListener('click', (e)=>{
+    const a = e.target.closest('.wikilink');
+    if (!a) return;
+    e.preventDefault();
+    const title = a.dataset.wikilinkTitle;
+    const existing = findNoteByTitle(title);
+    if (existing) openNote(existing.id);
+    else createNoteWithTitle(title, true);
+  });
+
+  // 그래프 노트 미리보기 패널
+  $('#gnpContent').addEventListener('click', (e)=>{
+    const a = e.target.closest('.wikilink');
+    if (!a) return;
+    e.preventDefault();
+    const title = a.dataset.wikilinkTitle;
+    const existing = findNoteByTitle(title);
+    if (existing) selectGraphNode(existing.id);
+    else { createNoteWithTitle(title, true); switchTab('editor'); }
+  });
+  $('#gnpCloseBtn').addEventListener('click', closeGraphNotePanel);
+  $('#gnpOpenFullBtn').addEventListener('click', ()=> switchTab('editor'));
+
+  // 휴지통
+  $('#trashBtn').addEventListener('click', ()=>{ renderTrash(); $('#trashModal').hidden = false; });
+  $('#closeTrashBtn').addEventListener('click', ()=>{ $('#trashModal').hidden = true; });
+  $('#trashModal').addEventListener('click', (e)=>{ if (e.target.id==='trashModal') $('#trashModal').hidden = true; });
+
+  // 설정
+  $('#settingsBtn').addEventListener('click', openSettings);
+  $('#closeSettingsBtn').addEventListener('click', async ()=>{
+    state.settings.apiKey = $('#apiKeyInput').value.trim();
+    state.settings.model = $('#modelInput').value.trim() || 'gemini-3.6-flash';
+    state.settings.driveClientId = $('#driveClientIdInput').value.trim();
+    state.settings.driveFolderName = $('#driveFolderNameInput').value.trim() || '연결 노트';
+    await Store.saveSettings(state.settings);
+    closeSettings();
+  });
+  $('#driveSyncBtn').addEventListener('click', async ()=>{
+    state.settings.driveClientId = $('#driveClientIdInput').value.trim();
+    state.settings.driveFolderName = $('#driveFolderNameInput').value.trim() || '연결 노트';
+    await Store.saveSettings(state.settings);
+    syncWithDrive();
+  });
+  $('#localFolderPickBtn').addEventListener('click', async ()=>{
+    try{
+      await LocalFolder.pick();
+      $('#localFolderStatus').textContent = '폴더가 선택되었습니다. "지금 동기화"를 눌러주세요.';
+    }catch(e){
+      showToast(e.message);
+    }
+  });
+  $('#localFolderSyncBtn').addEventListener('click', syncWithLocalFolder);
+  $('#settingsModal').addEventListener('click', (e)=>{ if (e.target.id==='settingsModal') closeSettings(); });
+  $('#themeToggle').addEventListener('change', async (e)=>{
+    applyTheme(e.target.checked ? 'light' : 'dark');
+    state.settings.theme = state.theme;
+    await Store.saveSettings(state.settings);
+    draw();
+  });
+  $('#compactBtn').addEventListener('click', async ()=>{
+    if (!confirm('노트마다 최근 10개 이력만 남기고 정리할까요? 그 이전 이력은 복구할 수 없습니다 (각 노트의 현재 내용은 그대로 유지됩니다).')) return;
+    const kept = await Ledger.compact(10);
+    await refreshStorageMeter();
+    showToast('이력을 정리했습니다 (남은 이벤트 '+kept+'개).');
+  });
+
+  $('#genSampleBtn').addEventListener('click', async ()=>{
+    $('#genSampleBtn').disabled = true;
+    await generateSampleNotes(1000);
+    $('#genSampleBtn').disabled = false;
+  });
+  $('#delSampleBtn').addEventListener('click', deleteSampleNotes);
+  $('#exportBtn').addEventListener('click', exportNotesJson);
+  $('#importBtn').addEventListener('click', ()=> $('#importFile').click());
+  $('#importFile').addEventListener('change', (e)=>{
+    if (e.target.files[0]) importNotesJson(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#exportMdBtn').addEventListener('click', exportNotesAsMarkdownZip);
+  $('#importMdBtn').addEventListener('click', ()=> $('#importMdFiles').click());
+  $('#importMdFiles').addEventListener('change', (e)=>{
+    if (e.target.files.length) importMarkdownFiles(e.target.files);
+    e.target.value = '';
+  });
+
+  // AI 채팅
+  $('#chatSendBtn').addEventListener('click', ()=>{
+    const v = $('#chatInput').value.trim();
+    if (!v) return;
+    $('#chatInput').value = '';
+    askAI(v);
+  });
+  $('#chatInput').addEventListener('keydown', (e)=>{
+    if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); $('#chatSendBtn').click(); }
+  });
+
+  // 키보드 단축키
+  document.addEventListener('keydown', (e)=>{
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase()==='k'){ e.preventDefault(); $('#searchInput').focus(); }
+    if (mod && e.key.toLowerCase()==='n'){ e.preventDefault(); createNoteWithTitle('제목 없음'); switchTab('editor'); }
+    if (e.key==='Escape'){ closeSettings(); closeHistory(); $('#trashModal').hidden = true; closeSidebar(); hideLinkPicker(); closeGraphNotePanel(); }
+  });
+
+  // PWA: 서비스워커 등록 (GitHub Pages 등 https 환경에서만 동작; Claude 아티팩트
+  // 미리보기처럼 등록이 막힌 환경에서는 조용히 건너뛴다)
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{ /* 미리보기 환경 등에서는 무시 */ });
+  }
+
+  const activeCount = state.notes.filter(n=>!n.deletedAt).length;
+  showToast('노트 '+activeCount+'개 로드 · 이력 '+Ledger.cache.length+'건 · 인덱싱 '+state.idx.elapsedMs.toFixed(1)+'ms', 3200);
+}
+
+init();
+</script>
+</body>
+</html>
