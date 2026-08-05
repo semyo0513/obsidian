@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0B0E14" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="창시디언" />
+<meta name="apple-mobile-web-app-title" content="연결" />
 <link rel="icon" href="icons/icon-192.png" type="image/png" />
 <link rel="apple-touch-icon" href="icons/icon-180.png" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
@@ -262,12 +262,11 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   .modal{width:92vw;}
 }
 </style>
-<base target="_blank">
 </head>
 <body>
 <div id="app">
   <aside id="sidebar">
-    <div class="brand">✦ Changsidian <span class="brand-sub">AI 지식 그래프 노트</span></div>
+    <div class="brand">✦ 연결 <span class="brand-sub">AI 지식 그래프 노트</span></div>
     <div class="search-box"><input id="searchInput" placeholder="노트 검색 (Ctrl/Cmd+K)" /></div>
     <div id="folderList" class="folder-list"></div>
     <button id="newNoteBtn">+ 새 노트 (Ctrl/Cmd+N)</button>
@@ -1293,16 +1292,14 @@ function formatSyncTime(ts){
   return '마지막 동기화: ' + new Date(ts).toLocaleString('ko-KR');
 }
 
-function uniqueSyncFilename(title, usedNames, folderName = null){
+function uniqueSyncFilename(title, usedNames){
   const base = sanitizeFilename(title);
-  const prefix = folderName ? folderName + '/' : '';
   let name = base + '.md';
-  const full = prefix + name;
-  if (!usedNames.has(full)){ usedNames.add(full); return name; }
+  if (!usedNames.has(name)){ usedNames.add(name); return name; }
   let i = 2;
-  while (usedNames.has(prefix + base + '-' + i + '.md')) i++;
-  name = base + '-' + i + '.md';
-  usedNames.add(prefix + name);
+  while (usedNames.has(base+'-'+i+'.md')) i++;
+  name = base+'-'+i+'.md';
+  usedNames.add(name);
   return name;
 }
 
@@ -1383,41 +1380,6 @@ const GoogleDrive = {
     return files;
   },
 
-  async listFilesRecursive(folderId, folderName = null, result = [], folderMap = new Map()){
-    if (folderName !== null) folderMap.set(folderId, folderName);
-    let pageToken;
-    do{
-      const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
-      const pt = pageToken ? '&pageToken='+encodeURIComponent(pageToken) : '';
-      const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=nextPageToken,files(id,name,mimeType,modifiedTime,parents)&pageSize=200'+pt);
-      const data = await res.json();
-      for (const f of (data.files || [])){
-        if (f.mimeType === 'application/vnd.google-apps.folder'){
-          await this.listFilesRecursive(f.id, f.name, result, folderMap);
-        } else if (f.name.toLowerCase().endsWith('.md')){
-          result.push({ ...f, folderName: folderMap.get(folderId) || null });
-        }
-      }
-      pageToken = data.nextPageToken;
-    } while(pageToken);
-    return result;
-  },
-
-  async ensureSubFolder(parentId, name){
-    const safe = name.replace(/'/g, "\\'");
-    const q = encodeURIComponent(`name='${safe}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
-    const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
-    const data = await res.json();
-    if (data.files && data.files.length) return data.files[0].id;
-    const createRes = await this.request('https://www.googleapis.com/drive/v3/files', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ name, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }),
-    });
-    const created = await createRes.json();
-    return created.id;
-  },
-
   async getFileText(fileId){
     const res = await this.request('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media');
     return res.text();
@@ -1447,6 +1409,7 @@ const GoogleDrive = {
     });
   },
 };
+
 async function syncWithDrive(){
   const statusEl = $('#driveSyncStatus');
   const btn = $('#driveSyncBtn');
@@ -1463,7 +1426,7 @@ async function syncWithDrive(){
     state.settings.driveFolderId = folderId;
 
     statusEl.textContent = '드라이브에서 파일 목록 가져오는 중…';
-    const remoteFiles = await GoogleDrive.listFilesRecursive(folderId);
+    const remoteFiles = await GoogleDrive.listFiles(folderId);
     const localByDriveId = new Map(state.notes.filter(n=>n.driveFileId).map(n=>[n.driveFileId, n]));
     const seenDriveIds = new Set();
     const now = Date.now();
@@ -1473,12 +1436,10 @@ async function syncWithDrive(){
       seenDriveIds.add(f.id);
       const remoteEditedAt = new Date(f.modifiedTime).getTime();
       let local = localByDriveId.get(f.id);
-      const driveFolderName = f.folderName || null;
 
       if (!local){
         statusEl.textContent = '"'+f.name+'" 가져오는 중…';
         const parsed = parseMarkdownFile(f.name, await GoogleDrive.getFileText(f.id));
-        parsed.folder = driveFolderName;
         const existing = state.notes.find(n=>n.id===parsed.id);
         if (existing){
           existing.title=parsed.title; existing.content=parsed.content; existing.tags=parsed.tags; existing.folder=parsed.folder;
@@ -1499,33 +1460,28 @@ async function syncWithDrive(){
       if (remoteChanged && !localChanged){
         statusEl.textContent = '"'+local.title+'" 갱신 반영 중…';
         const parsed = parseMarkdownFile(f.name, await GoogleDrive.getFileText(f.id));
-        local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=driveFolderName;
+        local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=parsed.folder;
         local.updatedAt=now; local.driveSyncedAt=now;
         Ledger.append([ makeEvent('note.edit', local.id, { title:local.title, content:local.content, tags:local.tags }, 'sync') ]);
         pulled++;
       } else if (remoteChanged && localChanged){
         statusEl.textContent = '"'+local.title+'" 충돌 처리 중…';
         const parsed = parseMarkdownFile(f.name, await GoogleDrive.getFileText(f.id));
-        const dupe = { id:uid(), title:parsed.title+' (드라이브 충돌 사본)', content:parsed.content, tags:parsed.tags, folder:driveFolderName,
+        const dupe = { id:uid(), title:parsed.title+' (드라이브 충돌 사본)', content:parsed.content, tags:parsed.tags, folder:parsed.folder,
           createdAt:now, updatedAt:now, deletedAt:null, driveFileId:null, driveSyncedAt:null, localFileName:null, localSyncedAt:null };
         state.notes.push(dupe);
         Ledger.append([ makeEvent('note.create', dupe.id, { title:dupe.title, content:dupe.content, tags:dupe.tags }, 'sync') ]);
         conflicts++;
-      } else if (!remoteChanged && !localChanged && local.folder !== driveFolderName) {
-        local.folder = driveFolderName;
       }
     }
 
-    const usedNames = new Set(remoteFiles.map(f => (f.folderName ? f.folderName + '/' : '') + f.name));
+    const usedNames = new Set(remoteFiles.map(f=>f.name));
     for (const note of state.notes){
       if (note.deletedAt) continue;
-      const targetFolderId = note.folder ? await GoogleDrive.ensureSubFolder(folderId, note.folder) : folderId;
-      const folderKey = note.folder || '';
-
       if (!note.driveFileId){
         statusEl.textContent = '"'+note.title+'" 드라이브에 올리는 중…';
-        const filename = uniqueSyncFilename(note.title, usedNames, folderKey);
-        const fileId = await GoogleDrive.createFile(targetFolderId, filename, noteToMarkdown(note));
+        const filename = uniqueSyncFilename(note.title, usedNames);
+        const fileId = await GoogleDrive.createFile(folderId, filename, noteToMarkdown(note));
         note.driveFileId = fileId; note.driveSyncedAt = Date.now();
         created++;
         continue;
@@ -1560,6 +1516,7 @@ async function syncWithDrive(){
     btn.disabled = false;
   }
 }
+
 /* ------------------------------- 로컬 폴더 ------------------------------- */
 
 const HandleStore = {
@@ -1611,7 +1568,7 @@ const LocalFolder = {
     if (!handle) return null;
     const perm = await handle.queryPermission({ mode:'readwrite' });
     if (perm === 'granted'){ this.handle = handle; return handle; }
-    return null;
+    return null; // 권한이 없으면 사용자가 버튼을 눌러 다시 허용해야 함(브라우저 정책)
   },
 
   async reconnect(){
@@ -1631,46 +1588,13 @@ const LocalFolder = {
     return files;
   },
 
-  async listMdFilesRecursive(handle = this.handle, path = '', result = []){
-    for await (const [name, h] of handle.entries()){
-      const entryPath = path ? path + '/' + name : name;
-      if (h.kind === 'directory'){
-        await this.listMdFilesRecursive(h, entryPath, result);
-      } else if (h.kind === 'file' && /\.md$/i.test(name)){
-        result.push({ name, handle: h, path: entryPath, folderName: path || null });
-      }
-    }
-    return result;
-  },
-
   async readFile(handle){
     const file = await handle.getFile();
     return { text: await file.text(), mtime: file.lastModified };
   },
 
-  async getDirectoryHandleByPath(path){
-    if (!path) return this.handle;
-    const parts = path.split('/');
-    let dir = this.handle;
-    for (const part of parts){
-      dir = await dir.getDirectoryHandle(part, { create: true });
-    }
-    return dir;
-  },
-
-  async writeFileAtPath(filePath, content){
-    const lastSlash = filePath.lastIndexOf('/');
-    const dirPath = lastSlash >= 0 ? filePath.slice(0, lastSlash) : '';
-    const fileName = lastSlash >= 0 ? filePath.slice(lastSlash + 1) : filePath;
-    const dir = await this.getDirectoryHandleByPath(dirPath);
-    const fh = await dir.getFileHandle(fileName, { create: true });
-    const w = await fh.createWritable();
-    await w.write(content);
-    await w.close();
-  },
-
   async writeFile(name, content){
-    const fh = await this.handle.getFileHandle(name, { create: true });
+    const fh = await this.handle.getFileHandle(name, { create:true });
     const w = await fh.createWritable();
     await w.write(content);
     await w.close();
@@ -1680,6 +1604,7 @@ const LocalFolder = {
     try{ await this.handle.removeEntry(name); }catch(e){ /* 이미 없으면 무시 */ }
   },
 };
+
 async function syncWithLocalFolder(){
   const statusEl = $('#localFolderStatus');
   const btn = $('#localFolderSyncBtn');
@@ -1690,63 +1615,57 @@ async function syncWithLocalFolder(){
   btn.disabled = true;
   statusEl.textContent = '폴더를 읽는 중…';
   try{
-    const files = await LocalFolder.listMdFilesRecursive();
+    const files = await LocalFolder.listMdFiles();
     const localByFileName = new Map(state.notes.filter(n=>n.localFileName).map(n=>[n.localFileName, n]));
     const seenNames = new Set();
     const now = Date.now();
     let pulled=0, created=0, pushed=0, conflicts=0;
 
     for (const f of files){
-      seenNames.add(f.path);
+      seenNames.add(f.name);
       const { text, mtime } = await LocalFolder.readFile(f.handle);
       const parsed = parseMarkdownFile(f.name, text);
-      const localFolderName = f.folderName || null;
-      let local = localByFileName.get(f.path) || state.notes.find(n=>n.id===parsed.id);
+      let local = localByFileName.get(f.name) || state.notes.find(n=>n.id===parsed.id);
 
       if (!local){
-        const note = { id:(parsed.id || uid()), title:parsed.title, content:parsed.content, tags:parsed.tags, folder:localFolderName,
+        const note = { id:(parsed.id || uid()), title:parsed.title, content:parsed.content, tags:parsed.tags, folder:parsed.folder,
           createdAt:parsed.createdAt||now, updatedAt:now, deletedAt:parsed.deletedAt||null,
-          driveFileId:null, driveSyncedAt:null, localFileName:f.path, localSyncedAt:now };
+          driveFileId:null, driveSyncedAt:null, localFileName:f.name, localSyncedAt:now };
         state.notes.push(note);
         Ledger.append([ makeEvent('note.create', note.id, { title:note.title, content:note.content, tags:note.tags }, 'sync') ]);
         pulled++;
         continue;
       }
-      local.localFileName = f.path;
+      local.localFileName = f.name;
       const localChanged = local.updatedAt > (local.localSyncedAt || 0);
       const remoteChanged = mtime > (local.localSyncedAt || 0);
       if (remoteChanged && !localChanged){
-        local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=localFolderName;
+        local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=parsed.folder;
         local.updatedAt=now; local.localSyncedAt=now;
         Ledger.append([ makeEvent('note.edit', local.id, { title:local.title, content:local.content, tags:local.tags }, 'sync') ]);
         pulled++;
       } else if (remoteChanged && localChanged){
-        const dupe = { id:uid(), title:parsed.title+' (로컬 충돌 사본)', content:parsed.content, tags:parsed.tags, folder:localFolderName,
+        const dupe = { id:uid(), title:parsed.title+' (로컬 충돌 사본)', content:parsed.content, tags:parsed.tags, folder:parsed.folder,
           createdAt:now, updatedAt:now, deletedAt:null, driveFileId:null, driveSyncedAt:null, localFileName:null, localSyncedAt:null };
         state.notes.push(dupe);
         Ledger.append([ makeEvent('note.create', dupe.id, { title:dupe.title, content:dupe.content, tags:dupe.tags }, 'sync') ]);
         conflicts++;
-      } else if (!remoteChanged && !localChanged && local.folder !== localFolderName) {
-        local.folder = localFolderName;
       }
     }
 
-    const usedNames = new Set(files.map(f => f.path));
+    const usedNames = new Set(files.map(f=>f.name));
     for (const note of state.notes){
       if (note.deletedAt) continue;
-      const folderKey = note.folder || '';
-
       if (!note.localFileName){
-        const filename = uniqueSyncFilename(note.title, usedNames, folderKey);
-        const filePath = folderKey ? folderKey + '/' + filename : filename;
-        await LocalFolder.writeFileAtPath(filePath, noteToMarkdown(note));
-        note.localFileName = filePath; note.localSyncedAt = Date.now();
+        const filename = uniqueSyncFilename(note.title, usedNames);
+        await LocalFolder.writeFile(filename, noteToMarkdown(note));
+        note.localFileName = filename; note.localSyncedAt = Date.now();
         created++;
         continue;
       }
       if (!seenNames.has(note.localFileName)) continue;
       if (note.updatedAt > (note.localSyncedAt || 0)){
-        await LocalFolder.writeFileAtPath(note.localFileName, noteToMarkdown(note));
+        await LocalFolder.writeFile(note.localFileName, noteToMarkdown(note));
         note.localSyncedAt = Date.now();
         pushed++;
       }
@@ -1773,6 +1692,7 @@ async function syncWithLocalFolder(){
     btn.disabled = false;
   }
 }
+
 /* ---------------------------------------------------------------------
    7) UI 컨트롤러
 --------------------------------------------------------------------- */
