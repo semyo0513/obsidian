@@ -1569,18 +1569,10 @@ async function syncWithDrive(opts={}){
     if (pullTasks.length){
       statusEl.textContent = '드라이브에서 '+pullTasks.length+'개 파일 가져오는 중…';
     }
-    let pullDone = 0;
-    const pullResults = await mapLimit(pullTasks, 5, async (task)=>{
-      const text = await GoogleDrive.getFileText(task.f.id);
-      pullDone++;
-      if (!silent) statusEl.textContent = '드라이브에서 파일 가져오는 중… ('+pullDone+'/'+pullTasks.length+')';
-      return parseMarkdownFile(task.f.name, text);
-    });
 
-    // 2단계(상태 반영, 순차 · 빠름): 받아온 내용을 노트 목록에 반영한다.
-    // 여기는 네트워크를 안 타므로 순서대로 처리해도 시간이 거의 안 든다.
-    pullTasks.forEach((task, i)=>{
-      const parsed = pullResults[i];
+    // 받아온 파일을 노트 목록에 반영한다. mapLimit의 각 작업 콜백 안에서 바로 처리하므로
+    // 처음 몇 개가 도착한 시점부터 화면에 순차적으로 나타난다(전체 1000개를 다 받을 때까지 기다리지 않음).
+    function applyPulledNote(task, parsed){
       const driveFolderName = task.driveFolderName;
       if (task.kind === 'new'){
         parsed.folder = driveFolderName;
@@ -1610,6 +1602,42 @@ async function syncWithDrive(opts={}){
         Ledger.append([ makeEvent('note.create', dupe.id, { title:dupe.title, content:dupe.content, tags:dupe.tags }, 'sync') ]);
         conflicts++;
       }
+    }
+
+    let pullDone = 0;
+    let sinceRender = 0;
+    let lastRenderAt = 0;
+    let sinceCheckpoint = 0;
+    let lastCheckpointAt = Date.now();
+
+    // 목록 화면 갱신은 매번(1000번) 하지 않고 "25개마다 또는 0.6초마다" 중 먼저 오는 쪽으로 묶어서 한다.
+    // (매번 갱신하면 오히려 그 자체가 느려짐 — 검색 인덱스 재계산 + 목록 DOM 재구성 비용 때문)
+    function maybeRenderProgress(force){
+      const t = Date.now();
+      if (!force && sinceRender < 25 && (t - lastRenderAt) < 600) return;
+      sinceRender = 0; lastRenderAt = t;
+      reindex();
+      renderNoteList();
+      if (!silent) statusEl.textContent = '드라이브에서 파일 가져오는 중… ('+pullDone+'/'+pullTasks.length+')';
+    }
+
+    // 중간에 탭을 닫거나 네트워크가 끊겨도 이미 받은 만큼은 남도록, 일정 개수/시간마다
+    // 로컬 저장소에 임시로 체크포인트를 남긴다. 다음에 다시 열면 이 시점부터 이어받듯 시작한다
+    // (이미 받은 노트는 driveSyncedAt이 채워져 있어 다음 동기화 때 다시 받지 않는다).
+    async function maybeCheckpoint(force){
+      const t = Date.now();
+      if (!force && sinceCheckpoint < 40 && (t - lastCheckpointAt) < 4000) return;
+      sinceCheckpoint = 0; lastCheckpointAt = t;
+      await Store.saveAll(state.notes);
+    }
+
+    await mapLimit(pullTasks, 8, async (task)=>{
+      const text = await GoogleDrive.getFileText(task.f.id);
+      const parsed = parseMarkdownFile(task.f.name, text);
+      applyPulledNote(task, parsed);
+      pullDone++; sinceRender++; sinceCheckpoint++;
+      maybeRenderProgress(pullDone === pullTasks.length);
+      await maybeCheckpoint(pullDone === pullTasks.length);
     });
 
     // 3단계(네트워크, 병렬): 이 기기에서 바뀌었거나 새로 만든 노트를 최대 4개씩 동시에 올린다.
@@ -1620,7 +1648,9 @@ async function syncWithDrive(opts={}){
       statusEl.textContent = '드라이브에 '+pushNotes.length+'개 노트 올리는 중…';
     }
     let pushDone = 0;
-    await mapLimit(pushNotes, 4, async (note)=>{
+    let pushSinceCheckpoint = 0;
+    let pushLastCheckpointAt = Date.now();
+    await mapLimit(pushNotes, 5, async (note)=>{
       const targetFolderId = note.folder ? await GoogleDrive.ensureFolderPath(folderId, note.folder) : folderId;
       if (!note.driveFileId){
         const filename = uniqueSyncFilename(note.title, usedNames, note.folder || '');
@@ -1632,8 +1662,14 @@ async function syncWithDrive(opts={}){
         note.driveSyncedAt = Date.now();
         pushed++;
       }
-      pushDone++;
+      pushDone++; pushSinceCheckpoint++;
       if (!silent) statusEl.textContent = '드라이브에 노트 올리는 중… ('+pushDone+'/'+pushNotes.length+')';
+      // 업로드도 마찬가지로 중간에 끊기면 driveFileId를 잃어버려 중복 생성될 수 있으므로 주기적으로 저장해둔다.
+      const t = Date.now();
+      if (pushSinceCheckpoint >= 40 || (t - pushLastCheckpointAt) > 4000 || pushDone === pushNotes.length){
+        pushSinceCheckpoint = 0; pushLastCheckpointAt = t;
+        await Store.saveAll(state.notes);
+      }
     });
 
     await Store.saveAll(state.notes);
