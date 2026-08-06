@@ -262,7 +262,6 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   .modal{width:92vw;}
 }
 </style>
-<base target="_blank">
 </head>
 <body>
 <div id="app">
@@ -1320,9 +1319,14 @@ const GoogleDrive = {
     }
     const clientId = (state.settings.driveClientId||'').trim();
     if (!clientId) throw new Error('구글 클라이언트 ID를 먼저 입력하세요.');
+    // drive.file 스코프는 "앱이 만들거나 연 파일"만 접근할 수 있어,
+    // 사용자가 드라이브에서 직접 만든 폴더(Notion, 옵시디언 등)와 그 안의 파일을
+    // 앱이 보거나 수정할 수 없다. 그래서 하위 폴더 파일을 못 불러오고,
+    // 기존 폴더를 못 찾아 매번 새 폴더(중복)를 만드는 문제가 생겼다.
+    // 전체 drive 스코프로 바꿔 사용자가 만든 폴더/파일에도 접근할 수 있게 한다.
     this.tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/drive.file',
+      scope: 'https://www.googleapis.com/auth/drive',
       callback: ()=>{},
     });
   },
@@ -1384,7 +1388,9 @@ const GoogleDrive = {
   },
 
   async listFilesRecursive(folderId, folderPath = null, result = [], folderMap = new Map()){
-    if (folderPath !== null) folderMap.set(folderId, folderPath);
+    // 루트 폴더는 folderPath가 null → 루트 폴더 자신도 null로 명시적으로 기록해
+    // 루트 바로 아래에 있는 .md 파일들의 folderName이 확실히 null이 되게 한다.
+    folderMap.set(folderId, folderPath);
     let pageToken;
     do{
       const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
@@ -1404,19 +1410,46 @@ const GoogleDrive = {
     return result;
   },
 
+  // 같은 동기화 실행 안에서 "부모ID|폴더명" 조합을 반복 조회/생성하지 않도록 캐시한다.
+  // (이게 없으면 여러 노트가 같은 하위 폴더를 가리킬 때 매번 드라이브에 검색을 새로 날리게 되고,
+  //  타이밍에 따라 같은 이름의 폴더가 중복 생성될 위험이 커진다.)
+  subFolderCache: new Map(),
+
   async ensureSubFolder(parentId, name){
+    const cacheKey = parentId + '|' + name;
+    if (this.subFolderCache.has(cacheKey)) return this.subFolderCache.get(cacheKey);
     const safe = name.replace(/'/g, "\\'");
     const q = encodeURIComponent(`name='${safe}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
     const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
     const data = await res.json();
-    if (data.files && data.files.length) return data.files[0].id;
-    const createRes = await this.request('https://www.googleapis.com/drive/v3/files', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ name, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }),
-    });
-    const created = await createRes.json();
-    return created.id;
+    let id;
+    if (data.files && data.files.length){
+      id = data.files[0].id;
+    } else {
+      const createRes = await this.request('https://www.googleapis.com/drive/v3/files', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ name, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }),
+      });
+      const created = await createRes.json();
+      id = created.id;
+    }
+    this.subFolderCache.set(cacheKey, id);
+    return id;
+  },
+
+  // note.folder에 저장된 "Notion/연구 포트폴리오" 같은 다단계 경로를 받아서
+  // 각 단계별로 ensureSubFolder를 호출해 최종 폴더 ID를 반환한다.
+  // syncWithDrive가 이 함수를 호출하고 있었지만 실제 구현이 빠져 있어서
+  // 폴더가 있는 노트를 저장할 때마다 오류가 나거나(또는 재시도 과정에서) 폴더가 새로 생기던 문제의 핵심 원인이었다.
+  async ensureFolderPath(parentId, path){
+    if (!path) return parentId;
+    const parts = path.split('/').map(s=>s.trim()).filter(Boolean);
+    let currentId = parentId;
+    for (const part of parts){
+      currentId = await this.ensureSubFolder(currentId, part);
+    }
+    return currentId;
   },
 
   async getFileText(fileId){
@@ -1460,6 +1493,7 @@ async function syncWithDrive(){
   statusEl.textContent = '구글 드라이브에 연결하는 중…';
   try{
     await GoogleDrive.ensureAccessToken();
+    GoogleDrive.subFolderCache.clear();
     const folderId = await GoogleDrive.ensureFolder(folderName);
     state.settings.driveFolderId = folderId;
 
