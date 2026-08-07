@@ -57,15 +57,17 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   background:var(--gold-dim); color:var(--gold); border:1px solid transparent; border-radius:var(--radius);
 }
 #newNoteBtn:hover{background:var(--gold); color:#12161F;}
-.folder-list{margin-top:10px; display:flex; flex-direction:column; gap:1px; max-height:150px; overflow-y:auto;}
+.folder-list{margin-top:10px; display:flex; flex-direction:column; gap:1px; max-height:220px; overflow-y:auto;}
 .folder-item{
-  display:flex; align-items:center; justify-content:space-between; gap:6px;
+  display:flex; align-items:center; gap:2px;
   padding:5px 8px; border-radius:6px; cursor:pointer; font-size:12px; color:var(--text-dim);
 }
 .folder-item:hover{background:var(--bg-hover); color:var(--text);}
 .folder-item.active{background:var(--gold-dim); color:var(--gold); font-weight:600;}
-.folder-item .fi-name{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.folder-item .fi-count{font-size:10.5px; color:var(--text-faint); flex-shrink:0;}
+.folder-item.drop-target{outline:1.5px dashed var(--gold); outline-offset:-1px; background:var(--gold-dim);}
+.folder-item .fi-caret{flex:0 0 14px; width:14px; text-align:center; font-size:9px; color:var(--text-faint); cursor:pointer;}
+.folder-item .fi-name{flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.folder-item .fi-count{font-size:10.5px; color:var(--text-faint); flex:0 0 auto; margin-left:6px;}
 .folder-item.active .fi-count{color:var(--gold);}
 .note-list{flex:1; overflow-y:auto; margin-top:12px; display:flex; flex-direction:column; gap:2px;}
 .note-item{
@@ -73,6 +75,7 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 }
 .note-item:hover{background:var(--bg-hover);}
 .note-item.active{background:var(--gold-dim); border-color:var(--gold);}
+.note-item.dragging{opacity:.4;}
 .note-item .ni-title{font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .note-item .ni-preview{font-size:11.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;}
 .note-item .ni-score{font-size:10px; color:var(--gold); float:right;}
@@ -115,6 +118,8 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   font-size:12px; padding:5px 11px; border-radius:6px;
 }
 .editor-toolbar button.on{color:var(--cyan); border-color:var(--cyan);}
+#deleteNoteBtn:hover{color:var(--danger); border-color:var(--danger);}
+#deleteNoteBtn:disabled{opacity:.5; cursor:default;}
 #contentInput{
   flex:1; resize:none; border:none; background:none; font-size:15px; line-height:1.75; padding:6px 2px;
   min-height:200px;
@@ -160,6 +165,12 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   border-bottom:1px solid var(--border);
 }
 #fpsCounter{font-family:var(--font-mono); color:var(--gold); min-width:58px;}
+#autoLinkBtn{
+  background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
+  font-size:12px; padding:5px 12px; border-radius:6px;
+}
+#autoLinkBtn:hover{color:var(--gold); border-color:var(--gold);}
+#autoLinkBtn:disabled{opacity:.5; cursor:default;}
 #resetZoomBtn{
   margin-left:auto; background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
   font-size:12px; padding:5px 12px; border-radius:6px;
@@ -301,6 +312,7 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
           <button id="modeWriteBtn" class="on" data-mode="write">편집</button>
           <button id="modePreviewBtn" data-mode="preview">미리보기</button>
           <button id="historyBtn" style="margin-left:auto;">🕐 히스토리</button>
+          <button id="deleteNoteBtn" title="휴지통으로 이동">🗑 삭제</button>
         </div>
         <textarea id="contentInput" placeholder="자유롭게 적어보세요. [[다른 노트 제목]] 형식으로 노트를 서로 연결할 수 있습니다."></textarea>
         <div id="previewPane" class="preview-pane"></div>
@@ -326,6 +338,7 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
       <div class="graph-toolbar">
         <span id="fpsCounter">-- FPS</span>
         <span id="graphStats">0개 노트 · 0개 연결</span>
+        <button id="autoLinkBtn" title="내용이 비슷한 노트끼리 자동으로 [[링크]]를 추가합니다">🔗 유사 노트 자동 연결</button>
         <button id="resetZoomBtn">화면 맞춤</button>
       </div>
       <canvas id="graphCanvas"></canvas>
@@ -788,6 +801,7 @@ const state = {
   searchQuery: '',
   searchResults: [],     // [{id, score}]
   activeFolder: '__ALL__', // '__ALL__' | '__UNFILED__' | 폴더명
+  expandedFolders: new Set(), // 폴더 트리에서 펼쳐진 경로들
   graphSelectedId: null,   // 그래프에서 클릭해 선택된 노드(사이드 패널에 표시 중인 노트)
   settings: {},
   theme: 'dark',
@@ -929,12 +943,13 @@ function nodeRadius(n){
 
 function buildGraphData(){
   const nodes = [];
-  for (const n of state.notes){
+  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  for (const n of activeNotes){
     nodes.push({ id:n.id, title:n.title||'제목 없음', ghost:false, backlinkCount: state.idx.backlinkCount.get(n.id)||0 });
   }
   const links = [];
   const ghostSeen = new Map();
-  for (const n of state.notes){
+  for (const n of activeNotes){
     for (const l of (state.idx.linksOf.get(n.id)||[])){
       if (l.self) continue;
       if (l.targetId){
@@ -976,6 +991,120 @@ function rebuildGraphSimulation(){
 
   $('#graphStats').textContent = nodes.length+'개 노트 · '+links.filter(l=>l.resolved).length+'개 연결';
   $('#emptyGraphHint').style.display = nodes.length ? 'none' : 'flex';
+}
+
+/* ------------------------- 유사 노트 자동 연결 ------------------------- */
+// 실제 LLM을 노트마다 호출하면 노트 수가 많을 때(수백~1000개) 너무 느리고 API 비용도 들기 때문에,
+// 검색에 이미 쓰고 있는 TF-IDF 역색인을 그대로 활용해 "내용이 비슷한 노트"를 빠르게 찾는다.
+// (전수 비교 O(n²)가 아니라, 같은 단어를 공유하는 노트끼리만 비교하는 역색인 기반 방식)
+function computeSimilarNotes(topK=3, minScore=0.12){
+  const inv = state.idx.invIndex;
+  const N = Math.max(1, state.idx.byId.size);
+  const idf = new Map();
+  for (const [tok, postings] of inv){
+    idf.set(tok, Math.log((N+1)/(postings.size+0.5)) + 1);
+  }
+  const normSq = new Map();
+  for (const [tok, postings] of inv){
+    const w = idf.get(tok);
+    for (const [id, tf] of postings){
+      const weight = tf*w;
+      normSq.set(id, (normSq.get(id)||0) + weight*weight);
+    }
+  }
+  const dot = new Map(); // "idA|idB"(idA<idB) -> 내적 누적값
+  for (const [tok, postings] of inv){
+    // 노트의 40% 이상에 등장하는 흔한 단어는 비교에서 빼서, 의미 없는 유사도와 연산량을 줄인다.
+    if (postings.size > N*0.4 || postings.size < 2) continue;
+    const w = idf.get(tok);
+    const entries = Array.from(postings.entries());
+    for (let i=0;i<entries.length;i++){
+      const [idA, tfA] = entries[i];
+      const wa = tfA*w;
+      for (let j=i+1;j<entries.length;j++){
+        const [idB, tfB] = entries[j];
+        const key = idA < idB ? idA+'|'+idB : idB+'|'+idA;
+        dot.set(key, (dot.get(key)||0) + wa*(tfB*w));
+      }
+    }
+  }
+  const byNote = new Map(); // noteId -> [{id, score}] (내림차순, 상위 topK)
+  for (const [key, d] of dot){
+    const [idA, idB] = key.split('|');
+    const denom = Math.sqrt(normSq.get(idA)||1) * Math.sqrt(normSq.get(idB)||1);
+    const score = denom ? d/denom : 0;
+    if (score < minScore) continue;
+    if (!byNote.has(idA)) byNote.set(idA, []);
+    if (!byNote.has(idB)) byNote.set(idB, []);
+    byNote.get(idA).push({ id:idB, score });
+    byNote.get(idB).push({ id:idA, score });
+  }
+  for (const [id, arr] of byNote){
+    arr.sort((a,b)=>b.score-a.score);
+    byNote.set(id, arr.slice(0, topK));
+  }
+  return byNote;
+}
+
+const AUTO_LINK_MARK = '## 🔗 관련 노트 (AI 자동 연결)';
+
+// 연결이 부족한(백링크+아웃링크 합이 적은) 노트를 대상으로, 내용이 비슷한 다른 노트를 찾아
+// 본문 맨 아래에 "관련 노트" 섹션으로 [[위키링크]]를 추가한다. 원래 쓴 내용은 건드리지 않고
+// 맨 끝에 구분되는 섹션으로만 붙이며, 다시 실행하면 이 섹션만 최신 결과로 갱신한다.
+async function runAiAutoLink(){
+  const btn = $('#autoLinkBtn');
+  if (btn) btn.disabled = true;
+  try{
+    reindex();
+    const notes = state.notes.filter(n=>!n.deletedAt);
+    if (notes.length < 2){ showToast('연결할 노트가 부족합니다.'); return; }
+
+    const CONNECT_THRESHOLD = 2;
+    function connectivity(n){
+      const out = (state.idx.linksOf.get(n.id)||[]).filter(l=>l.targetId).length;
+      const back = state.idx.backlinkCount.get(n.id) || 0;
+      return out + back;
+    }
+    const targets = notes.filter(n => connectivity(n) < CONNECT_THRESHOLD);
+    if (!targets.length){ showToast('이미 대부분의 노트가 서로 연결되어 있습니다.'); return; }
+
+    showToast('연결이 부족한 노트 '+targets.length+'개를 분석하는 중…', 2500);
+    const simMap = computeSimilarNotes(3, 0.12);
+
+    let updated = 0;
+    for (const n of targets){
+      const sims = simMap.get(n.id);
+      if (!sims || !sims.length) continue;
+      const already = new Set((state.idx.linksOf.get(n.id)||[]).map(l=>l.targetId).filter(Boolean));
+      const picks = sims.filter(s => !already.has(s.id) && s.id !== n.id);
+      if (!picks.length) continue;
+      const titles = picks.map(s => state.idx.byId.get(s.id)?.title).filter(Boolean);
+      if (!titles.length) continue;
+
+      const markIdx = n.content.indexOf(AUTO_LINK_MARK);
+      const base = (markIdx >= 0 ? n.content.slice(0, markIdx) : n.content).replace(/\s+$/, '');
+      const section = AUTO_LINK_MARK + '\n' + titles.map(t=>'- [['+t+']]').join('\n');
+      const nextContent = (base ? base+'\n\n' : '') + section + '\n';
+      if (nextContent === n.content) continue;
+
+      n.content = nextContent;
+      n.updatedAt = Date.now();
+      Ledger.append([ makeEvent('note.edit', n.id, { title:n.title, content:n.content, tags:n.tags }, 'ai-autolink') ]);
+      updated++;
+    }
+
+    if (!updated){ showToast('새로 연결할 만한 유사 노트를 찾지 못했습니다.'); return; }
+
+    reindex();
+    await Store.saveAll(state.notes);
+    renderNoteList(); renderEditor(); rebuildGraphSimulation();
+    showToast(updated+'개 노트에 유사 노트 연결을 추가했습니다.', 4000);
+    scheduleAutoDriveSyncAfterEdit();
+  }catch(e){
+    showToast('자동 연결 중 오류: '+e.message, 5000);
+  }finally{
+    if (btn) btn.disabled = false;
+  }
 }
 
 function nodeAt(x, y){
@@ -1170,6 +1299,7 @@ function initGraph(){
   canvas.addEventListener('mouseleave', ()=>{ hoveredNodeId = null; });
 
   $('#resetZoomBtn').addEventListener('click', fitGraphToView);
+  $('#autoLinkBtn').addEventListener('click', runAiAutoLink);
 }
 
 function fitGraphToView(){
@@ -1503,10 +1633,20 @@ const GoogleDrive = {
     return data.id;
   },
 
-  async updateFile(fileId, filename, content){
+  // newParentId를 넘기면(=로컬에서 폴더를 옮긴 경우) 실제 드라이브 파일의 부모 폴더도 함께 옮긴다.
+  // 기존 부모를 먼저 조회해서 removeParents로 빼고 addParents로 새 폴더에 넣는다.
+  async updateFile(fileId, filename, content, newParentId){
     const boundary = '-------kgnotes'+Date.now();
     const body = this.buildMultipart(boundary, { name:filename }, content);
-    await this.request('https://www.googleapis.com/upload/drive/v3/files/'+fileId+'?uploadType=multipart', {
+    let url = 'https://www.googleapis.com/upload/drive/v3/files/'+fileId+'?uploadType=multipart';
+    if (newParentId){
+      const metaRes = await this.request('https://www.googleapis.com/drive/v3/files/'+fileId+'?fields=parents');
+      const meta = await metaRes.json();
+      const oldParents = (meta.parents||[]).join(',');
+      url += '&addParents='+encodeURIComponent(newParentId);
+      if (oldParents) url += '&removeParents='+encodeURIComponent(oldParents);
+    }
+    await this.request(url, {
       method:'PATCH', headers:{ 'Content-Type':'multipart/related; boundary='+boundary }, body,
     });
   },
@@ -1563,6 +1703,7 @@ async function syncWithDrive(opts={}){
         pullTasks.push({ kind:'conflict', f, local, driveFolderName });
       } else if (!remoteChanged && !localChanged && local.folder !== driveFolderName){
         local.folder = driveFolderName;
+        local.driveSyncedFolder = driveFolderName;
       }
     }
 
@@ -1579,12 +1720,12 @@ async function syncWithDrive(opts={}){
         const existing = state.notes.find(n=>n.id===parsed.id);
         if (existing){
           existing.title=parsed.title; existing.content=parsed.content; existing.tags=parsed.tags; existing.folder=parsed.folder;
-          existing.driveFileId=task.f.id; existing.driveSyncedAt=now; existing.updatedAt=now;
+          existing.driveFileId=task.f.id; existing.driveSyncedAt=now; existing.driveSyncedFolder=driveFolderName; existing.updatedAt=now;
           Ledger.append([ makeEvent('note.edit', existing.id, { title:existing.title, content:existing.content, tags:existing.tags }, 'sync') ]);
         } else {
           const note = { id:(parsed.id || uid()), title:parsed.title, content:parsed.content, tags:parsed.tags, folder:parsed.folder,
             createdAt:parsed.createdAt||now, updatedAt:now, deletedAt:parsed.deletedAt||null,
-            driveFileId:task.f.id, driveSyncedAt:now, localFileName:null, localSyncedAt:null };
+            driveFileId:task.f.id, driveSyncedAt:now, driveSyncedFolder:driveFolderName, localFileName:null, localSyncedAt:null };
           state.notes.push(note);
           Ledger.append([ makeEvent('note.create', note.id, { title:note.title, content:note.content, tags:note.tags }, 'sync') ]);
         }
@@ -1592,7 +1733,7 @@ async function syncWithDrive(opts={}){
       } else if (task.kind === 'update'){
         const local = task.local;
         local.title=parsed.title; local.content=parsed.content; local.tags=parsed.tags; local.folder=driveFolderName;
-        local.updatedAt=now; local.driveSyncedAt=now;
+        local.updatedAt=now; local.driveSyncedAt=now; local.driveSyncedFolder=driveFolderName;
         Ledger.append([ makeEvent('note.edit', local.id, { title:local.title, content:local.content, tags:local.tags }, 'sync') ]);
         pulled++;
       } else if (task.kind === 'conflict'){
@@ -1655,11 +1796,15 @@ async function syncWithDrive(opts={}){
       if (!note.driveFileId){
         const filename = uniqueSyncFilename(note.title, usedNames, note.folder || '');
         const fileId = await GoogleDrive.createFile(targetFolderId, filename, noteToMarkdown(note));
-        note.driveFileId = fileId; note.driveSyncedAt = Date.now();
+        note.driveFileId = fileId; note.driveSyncedAt = Date.now(); note.driveSyncedFolder = note.folder || null;
         created++;
       } else {
-        await GoogleDrive.updateFile(note.driveFileId, sanitizeFilename(note.title)+'.md', noteToMarkdown(note));
-        note.driveSyncedAt = Date.now();
+        // driveSyncedFolder와 지금 folder가 다르면 로컬에서 폴더를 옮긴 것 → 드라이브에서도 실제로 옮긴다.
+        // (처음 이 기능이 적용되는 시점엔 driveSyncedFolder가 없어 한 번은 여벌로 옮김 처리를 하지만,
+        //  같은 폴더로 옮겨도 무해하고 이후부턴 정확히 필요할 때만 동작한다.)
+        const folderChanged = note.driveSyncedFolder !== (note.folder || null);
+        await GoogleDrive.updateFile(note.driveFileId, sanitizeFilename(note.title)+'.md', noteToMarkdown(note), folderChanged ? targetFolderId : null);
+        note.driveSyncedAt = Date.now(); note.driveSyncedFolder = note.folder || null;
         pushed++;
       }
       pushDone++; pushSinceCheckpoint++;
@@ -1957,7 +2102,12 @@ function renderNoteList(){
   } else {
     let pool = state.notes.filter(n=>!n.deletedAt);
     if (state.activeFolder === '__UNFILED__') pool = pool.filter(n=>!n.folder);
-    else if (state.activeFolder && state.activeFolder !== '__ALL__') pool = pool.filter(n=>n.folder===state.activeFolder);
+    else if (state.activeFolder && state.activeFolder !== '__ALL__'){
+      // 폴더를 정확히 클릭했을 때뿐 아니라, 그 하위 폴더에 속한 노트도 함께 보여준다.
+      // (예: "Notion"을 클릭하면 "Notion/결혼/..." 등 모든 하위 폴더의 노트가 다 보인다)
+      const prefix = state.activeFolder + '/';
+      pool = pool.filter(n => n.folder === state.activeFolder || (n.folder && n.folder.startsWith(prefix)));
+    }
     items = pool.sort((a,b)=>b.updatedAt-a.updatedAt).map(n=>({note:n, score:null}));
   }
   list.innerHTML = '';
@@ -1976,6 +2126,14 @@ function renderNoteList(){
     el.innerHTML = `<div class="ni-title">${escapeHtml(note.title||'제목 없음')}</div>
                      <div class="ni-preview">${escapeHtml(buildPreview(note.content))}</div>`;
     el.onclick = ()=>{ openNote(note.id); switchTab('editor'); };
+    // 노트를 폴더 목록으로 끌어다 놓아 폴더를 옮길 수 있게 한다.
+    el.draggable = true;
+    el.addEventListener('dragstart', (e)=>{
+      e.dataTransfer.setData('text/note-id', note.id);
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', ()=> el.classList.remove('dragging'));
     list.appendChild(el);
   }
   const activeCount = state.notes.filter(n=>!n.deletedAt).length;
@@ -1983,30 +2141,125 @@ function renderNoteList(){
   renderFolderList();
 }
 
+// note.folder(예: "Notion/결혼/박하 출산노트")를 '/' 기준으로 쪼개서 트리로 묶는다.
+// 각 노드의 count는 "자기 자신 + 모든 하위 폴더"에 속한 노트 수의 합이다.
+function buildFolderTree(activeNotes){
+  const root = { name:'', path:'', count:0, children:new Map() };
+  for (const n of activeNotes){
+    if (!n.folder) continue;
+    const parts = n.folder.split('/').map(s=>s.trim()).filter(Boolean);
+    let node = root;
+    let pathAcc = '';
+    for (const part of parts){
+      pathAcc = pathAcc ? pathAcc+'/'+part : part;
+      let child = node.children.get(part);
+      if (!child){
+        child = { name:part, path:pathAcc, count:0, children:new Map() };
+        node.children.set(part, child);
+      }
+      child.count++;
+      node = child;
+    }
+  }
+  return root;
+}
+
+function makeFolderDropTarget(el, folderPathOrNull){
+  el.addEventListener('dragover', (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; el.classList.add('drop-target'); });
+  el.addEventListener('dragleave', ()=> el.classList.remove('drop-target'));
+  el.addEventListener('drop', (e)=>{
+    e.preventDefault();
+    el.classList.remove('drop-target');
+    const noteId = e.dataTransfer.getData('text/note-id');
+    if (noteId) moveNoteToFolder(noteId, folderPathOrNull);
+  });
+}
+
+function renderFolderNode(node, depth, wrap){
+  const children = Array.from(node.children.values()).sort((a,b)=>a.name.localeCompare(b,'ko'));
+  for (const child of children){
+    const hasChildren = child.children.size > 0;
+    const isExpanded = state.expandedFolders.has(child.path);
+    const el = document.createElement('div');
+    el.className = 'folder-item' + (state.activeFolder===child.path ? ' active' : '');
+    el.style.paddingLeft = (8 + depth*14) + 'px';
+    const caret = document.createElement('span');
+    caret.className = 'fi-caret';
+    caret.textContent = hasChildren ? (isExpanded ? '▾' : '▸') : '';
+    if (hasChildren){
+      caret.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if (isExpanded) state.expandedFolders.delete(child.path); else state.expandedFolders.add(child.path);
+        renderFolderList();
+      });
+    }
+    const name = document.createElement('span');
+    name.className = 'fi-name';
+    name.textContent = child.name;
+    const count = document.createElement('span');
+    count.className = 'fi-count';
+    count.textContent = child.count;
+    el.appendChild(caret); el.appendChild(name); el.appendChild(count);
+    // 상위 폴더를 누르면 하위 폴더까지 펼치면서, 동시에 그 폴더(+하위 전체)로 필터링한다.
+    el.onclick = ()=>{
+      if (hasChildren && !isExpanded) state.expandedFolders.add(child.path);
+      state.activeFolder = child.path;
+      renderNoteList();
+    };
+    makeFolderDropTarget(el, child.path);
+    wrap.appendChild(el);
+    if (hasChildren && isExpanded){
+      renderFolderNode(child, depth+1, wrap);
+    }
+  }
+}
+
 function renderFolderList(){
   const wrap = $('#folderList');
   if (!wrap) return;
-  const counts = new Map();
-  let unfiled = 0;
-  for (const n of state.notes){
-    if (n.deletedAt) continue;
-    if (n.folder) counts.set(n.folder, (counts.get(n.folder)||0)+1);
-    else unfiled++;
-  }
-  const total = state.notes.filter(n=>!n.deletedAt).length;
-  const folders = Array.from(counts.keys()).sort((a,b)=>a.localeCompare(b,'ko'));
+  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  const total = activeNotes.length;
+  const unfiled = activeNotes.filter(n=>!n.folder).length;
 
   wrap.innerHTML = '';
-  const makeItem = (key, label, count)=>{
-    const el = document.createElement('div');
-    el.className = 'folder-item' + (state.activeFolder===key ? ' active' : '');
-    el.innerHTML = `<span class="fi-name">${escapeHtml(label)}</span><span class="fi-count">${count}</span>`;
-    el.onclick = ()=>{ state.activeFolder = key; renderNoteList(); };
-    wrap.appendChild(el);
-  };
-  makeItem('__ALL__', '전체 노트', total);
-  for (const f of folders) makeItem(f, f, counts.get(f));
-  if (unfiled) makeItem('__UNFILED__', '미분류', unfiled);
+
+  const allEl = document.createElement('div');
+  allEl.className = 'folder-item' + (state.activeFolder==='__ALL__' ? ' active' : '');
+  allEl.innerHTML = `<span class="fi-caret"></span><span class="fi-name">전체 노트</span><span class="fi-count">${total}</span>`;
+  allEl.onclick = ()=>{ state.activeFolder = '__ALL__'; renderNoteList(); };
+  makeFolderDropTarget(allEl, null);
+  wrap.appendChild(allEl);
+
+  const tree = buildFolderTree(activeNotes);
+  renderFolderNode(tree, 0, wrap);
+
+  if (unfiled){
+    const unfiledEl = document.createElement('div');
+    unfiledEl.className = 'folder-item' + (state.activeFolder==='__UNFILED__' ? ' active' : '');
+    unfiledEl.innerHTML = `<span class="fi-caret"></span><span class="fi-name">미분류</span><span class="fi-count">${unfiled}</span>`;
+    unfiledEl.onclick = ()=>{ state.activeFolder = '__UNFILED__'; renderNoteList(); };
+    makeFolderDropTarget(unfiledEl, null);
+    wrap.appendChild(unfiledEl);
+  }
+}
+
+// 노트를 다른 폴더로 옮긴다(드래그 앤 드롭 또는 다른 코드에서 호출).
+// folderPath가 null/빈 문자열이면 "미분류"로 옮긴다.
+function moveNoteToFolder(noteId, folderPath){
+  const note = state.notes.find(n=>n.id===noteId);
+  if (!note) return;
+  const target = folderPath || null;
+  if ((note.folder||null) === target) return;
+  note.folder = target;
+  note.updatedAt = Date.now();
+  Ledger.append([ makeEvent('note.edit', note.id, { title:note.title, content:note.content, tags:note.tags }, 'user') ]);
+  reindex();
+  renderNoteList();
+  renderFolderOptions();
+  if (state.activeId === note.id) renderEditor();
+  persistProjection();
+  scheduleAutoDriveSyncAfterEdit();
+  showToast('"'+(note.title||'제목 없음')+'" → '+(target || '미분류')+'(으)로 이동했습니다.');
 }
 
 function updateStorageModeBadge(){
@@ -2105,6 +2358,7 @@ function renderEditor(){
   $('#contentInput').disabled = disabled;
   $('#tagsInput').disabled = disabled;
   $('#folderInput').disabled = disabled;
+  $('#deleteNoteBtn').disabled = disabled;
   renderFolderOptions();
   renderPreview();
   renderBacklinks();
@@ -2599,6 +2853,7 @@ async function init(){
   $('#linkPickerInput').addEventListener('focus', (e)=>{ if (e.target.value.trim()) renderLinkPickerResults(e.target.value); });
   document.addEventListener('click', (e)=>{ if (!e.target.closest('.link-picker')) hideLinkPicker(); });
   $('#historyBtn').addEventListener('click', openHistoryModal);
+  $('#deleteNoteBtn').addEventListener('click', ()=>{ if (state.activeId) deleteNote(state.activeId); });
   $('#closeHistoryBtn').addEventListener('click', closeHistory);
   $('#historyModal').addEventListener('click', (e)=>{ if (e.target.id==='historyModal') closeHistory(); });
 
