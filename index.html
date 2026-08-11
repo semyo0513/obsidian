@@ -1610,28 +1610,45 @@ const GoogleDrive = {
   // (이게 없으면 여러 노트가 같은 하위 폴더를 가리킬 때 매번 드라이브에 검색을 새로 날리게 되고,
   //  타이밍에 따라 같은 이름의 폴더가 중복 생성될 위험이 커진다.)
   subFolderCache: new Map(),
+  // subFolderCache는 "완료된" 결과만 담는다. 문제는 노트 업로드가 mapLimit(…,5,…)로
+  // 최대 5개까지 동시에 진행된다는 점 — 예를 들어 "부모/A", "부모/B" 두 노트를 동시에
+  // 올리면 둘 다 같은 순간에 "부모" 폴더가 아직 캐시에 없는 걸 보고, 검색 결과도 아직
+  // 없다고 각자 판단해 "부모" 폴더를 하나씩 따로 만들어버린다(체크 후 생성 사이의 경쟁 상태).
+  // 이게 "하위 폴더는 정상인데 상위 폴더만 중복 생성되는" 버그의 원인이었다.
+  // 해결: 같은 키에 대한 첫 요청이 아직 진행 중이면, 새로 요청이 들어와도 새 네트워크
+  // 호출을 만들지 않고 진행 중인 프로미스를 그대로 공유해서 기다리게 한다.
+  subFolderInFlight: new Map(),
 
   async ensureSubFolder(parentId, name){
     const cacheKey = parentId + '|' + name;
     if (this.subFolderCache.has(cacheKey)) return this.subFolderCache.get(cacheKey);
-    const safe = name.replace(/'/g, "\\'");
-    const q = encodeURIComponent(`name='${safe}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
-    const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
-    const data = await res.json();
-    let id;
-    if (data.files && data.files.length){
-      id = data.files[0].id;
-    } else {
-      const createRes = await this.request('https://www.googleapis.com/drive/v3/files', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ name, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }),
-      });
-      const created = await createRes.json();
-      id = created.id;
+    if (this.subFolderInFlight.has(cacheKey)) return this.subFolderInFlight.get(cacheKey);
+    const task = (async ()=>{
+      const safe = name.replace(/'/g, "\\'");
+      const q = encodeURIComponent(`name='${safe}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
+      const res = await this.request('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)');
+      const data = await res.json();
+      let id;
+      if (data.files && data.files.length){
+        id = data.files[0].id;
+      } else {
+        const createRes = await this.request('https://www.googleapis.com/drive/v3/files', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ name, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }),
+        });
+        const created = await createRes.json();
+        id = created.id;
+      }
+      this.subFolderCache.set(cacheKey, id);
+      return id;
+    })();
+    this.subFolderInFlight.set(cacheKey, task);
+    try{
+      return await task;
+    } finally {
+      this.subFolderInFlight.delete(cacheKey);
     }
-    this.subFolderCache.set(cacheKey, id);
-    return id;
   },
 
   // note.folder에 저장된 "Notion/연구 포트폴리오" 같은 다단계 경로를 받아서
@@ -1709,6 +1726,7 @@ async function syncWithDrive(opts={}){
   try{
     await GoogleDrive.ensureAccessToken();
     GoogleDrive.subFolderCache.clear();
+    GoogleDrive.subFolderInFlight.clear();
     const folderId = await GoogleDrive.ensureFolder(folderName);
     state.settings.driveFolderId = folderId;
 
@@ -1818,7 +1836,8 @@ async function syncWithDrive(opts={}){
     });
 
     // 3단계(네트워크, 병렬): 이 기기에서 바뀌었거나 새로 만든 노트를 최대 4개씩 동시에 올린다.
-    // ensureFolderPath/ensureSubFolder는 내부 캐시로 같은 경로를 중복 생성하지 않는다.
+    // ensureFolderPath/ensureSubFolder는 내부 캐시(+ 진행 중인 요청 공유)로 같은 경로를
+    // 동시에 여러 노트가 요청해도 중복 생성하지 않는다.
     const usedNames = new Set(remoteFiles.map(f => (f.folderName ? f.folderName + '/' : '') + f.name));
     const pushNotes = state.notes.filter(n => !n.deletedAt && (!n.driveFileId || (seenDriveIds.has(n.driveFileId) && n.updatedAt > (n.driveSyncedAt || 0))));
     if (pushNotes.length){
