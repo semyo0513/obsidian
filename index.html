@@ -241,6 +241,8 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   flex:1; background:var(--bg-input); border:1px solid var(--border); color:var(--text); font-size:12px; padding:8px 6px; border-radius:6px;
 }
 .modal .row button:hover{background:var(--bg-hover);}
+.modal .row button.danger{color:var(--danger); border-color:var(--danger);}
+.modal .row button.danger:hover{background:var(--danger-dim);}
 .storage-meter{height:5px; background:var(--bg-input); border-radius:3px; overflow:hidden; margin-top:10px;}
 #storageBar{height:100%; background:var(--cyan); width:0%;}
 #storageLabel{font-size:11px; color:var(--text-faint);}
@@ -471,6 +473,13 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
     <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
       <input type="checkbox" id="themeToggle" style="width:auto;" /> 라이트 모드
     </label>
+
+    <hr/>
+    <label style="color:var(--danger);">위험 구역</label>
+    <p class="hint">이 기기에 저장된 노트, 휴지통, 편집 이력(NoteLedger)을 모두 영구적으로 삭제하고 앱을 초기 상태로 되돌립니다. 구글 드라이브·로컬 폴더에 이미 동기화된 파일 자체는 지워지지 않지만, 자동 동기화가 켜져 있으면 삭제한 노트가 그쪽에서 다시 불러와질 수 있어 실행 시 자동 동기화는 꺼집니다.</p>
+    <div class="row">
+      <button id="factoryResetBtn" class="danger">노트 전체 공장초기화</button>
+    </div>
 
     <button id="closeSettingsBtn">닫기</button>
   </div>
@@ -2697,6 +2706,68 @@ function deleteSampleNotes(){
   showToast(removed+'개의 샘플 노트를 삭제했습니다.');
 }
 
+// 노트 전체 공장초기화: 프로젝션(Store)과 이력 원장(Ledger)을 모두 비워
+// 앱을 최초 설치 상태로 되돌린다. 매우 파괴적인 동작이므로 confirm() +
+// 텍스트 입력(prompt) 이중 확인을 거친다. API 키·드라이브 클라이언트 ID 등
+// 앱 설정 자체는 "노트" 범위가 아니므로 건드리지 않되, 자동 동기화만은
+// 꺼둔다 — 켜진 채로 두면 드라이브/로컬 폴더에 남아있는 옛 파일이 다음
+// 동기화 때 그대로 다시 들어와 초기화가 무의미해지기 때문이다.
+async function factoryResetAllNotes(){
+  const activeNotes = state.notes.filter(n=>!n.deletedAt).length;
+  const trashedNotes = state.notes.length - activeNotes;
+  const historyCount = Ledger.cache.length;
+
+  const detail = activeNotes+'개'+(trashedNotes ? ' (휴지통 '+trashedNotes+'개 포함 총 '+state.notes.length+'개)' : '');
+  const agreed = confirm(
+    '노트 '+detail+'와 편집 이력 '+historyCount+'건이 모두 영구히 삭제됩니다.\n\n'
+    +'⚠ 이 기기에 저장된 데이터만 지워집니다. 구글 드라이브·로컬 폴더에 이미 동기화된 파일은 그대로 남아있으며, 자동 동기화가 켜져 있으면 삭제한 노트가 다시 불러와질 수 있습니다 (진행하면 자동 동기화가 꺼집니다).\n\n'
+    +'되돌릴 수 없습니다. 계속할까요?'
+  );
+  if (!agreed) return;
+
+  const typed = prompt('정말로 초기화하려면 아래 칸에 "초기화"라고 입력하세요.');
+  if (typed !== '초기화'){
+    showToast('입력이 일치하지 않아 취소되었습니다.');
+    return;
+  }
+
+  // 1) 노트 프로젝션 초기화
+  state.notes = [];
+  state.activeId = null;
+  state.searchQuery = '';
+  state.searchResults = [];
+  state.graphSelectedId = null;
+  state.activeFolder = '__ALL__';
+  state.expandedFolders = new Set();
+  reindex();
+  rebuildGraphSimulation();
+  closeGraphNotePanel();
+  renderNoteList();
+  renderFolderList();
+  renderEditor();
+  renderTrash();
+  await Store.saveAll([]);
+
+  // 2) 이력 원장(Ledger) 초기화 — 샤드를 전부 지우고 메타를 리셋한다
+  const oldShardCount = Ledger.meta.shardCount || 0;
+  for (let i=0; i<oldShardCount; i++){
+    try{ await window.storage.delete('ledger-shard-'+i, false); }catch(e){ /* 이미 없을 수 있음 — 무시 */ }
+  }
+  Ledger.meta = { shardCount: 0 };
+  Ledger.cache = [];
+  await Ledger._saveMeta(Ledger.meta);
+
+  // 3) 자동 동기화 끄기
+  state.settings.driveAutoSync = false;
+  await Store.saveSettings(state.settings);
+  setupDriveAutoSyncTimer();
+  const toggle = $('#driveAutoSyncToggle');
+  if (toggle) toggle.checked = false;
+
+  await refreshStorageMeter();
+  showToast('노트 전체를 공장초기화했습니다.', 4000);
+}
+
 function exportNotesJson(){
   const data = JSON.stringify({ exportedAt: new Date().toISOString(), notes: state.notes.filter(n=>!n.deletedAt) }, null, 2);
   const blob = new Blob([data], { type:'application/json' });
@@ -3002,6 +3073,7 @@ async function init(){
     $('#genSampleBtn').disabled = false;
   });
   $('#delSampleBtn').addEventListener('click', deleteSampleNotes);
+  $('#factoryResetBtn').addEventListener('click', factoryResetAllNotes);
   $('#exportBtn').addEventListener('click', exportNotesJson);
   $('#importBtn').addEventListener('click', ()=> $('#importFile').click());
   $('#importFile').addEventListener('change', (e)=>{
