@@ -173,6 +173,11 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 }
 #autoLinkBtn:hover{color:var(--gold); border-color:var(--gold);}
 #autoLinkBtn:disabled{opacity:.5; cursor:default;}
+#collapseClustersBtn{
+  background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
+  font-size:12px; padding:5px 12px; border-radius:6px;
+}
+#collapseClustersBtn:hover{color:#C9A8F0; border-color:#8A5FD1;}
 #resetZoomBtn{
   margin-left:auto; background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
   font-size:12px; padding:5px 12px; border-radius:6px;
@@ -368,6 +373,7 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
         <span id="fpsCounter">-- FPS</span>
         <span id="graphStats">0개 노트 · 0개 연결</span>
         <button id="autoLinkBtn" title="내용이 비슷한 노트끼리 자동으로 [[링크]]를 추가합니다">🔗 유사 노트 자동 연결</button>
+        <button id="collapseClustersBtn" title="펼친 클러스터를 모두 다시 묶습니다" style="display:none;">🔽 클러스터로 되돌리기</button>
         <button id="resetZoomBtn">화면 맞춤</button>
       </div>
       <canvas id="graphCanvas"></canvas>
@@ -523,26 +529,22 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
    ========================================================================= */
 
 /* ---------------------------------------------------------------------
-   0) 독립 실행(GitHub Pages 등) 환경을 위한 저장소 폴리필
-   Claude 아티팩트 환경에는 window.storage가 이미 주입되어 있으므로 그 경우엔
-   손대지 않는다. 없는 환경(GitHub Pages, file:// 등)에서만 localStorage 기반
-   구현을 채워 넣어 Store/Ledger가 동일한 인터페이스로 계속 동작하게 한다.
-   (localStorage는 출처당 대략 5~10MB 한도이며, Store가 이미 5MB 근접 시
-   경고를 표시하므로 별도 용량 처리는 필요 없다.)
---------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------
    0) 독립 실행 환경을 위한 저장소 폴리필
    Claude 아티팩트 환경에는 window.storage가 이미 주입되어 있으므로 그 경우엔
    손대지 않는다. 없는 환경에서는 두 가지 중 하나를 자동으로 고른다:
      1) 연결.exe(로컬 서버)로 열었다면 → /api/storage/* 를 통해 실제 파일로 저장
         (노트는 exe 옆 notes/ 폴더에 .md 파일 하나씩 — 탐색기에서 직접 붙여넣기 가능)
-     2) 그냥 GitHub Pages 등 브라우저로 열었다면 → 기존처럼 localStorage 사용
+     2) 그냥 GitHub Pages 등 브라우저로 열었다면 → IndexedDB 사용
+        (예전엔 localStorage를 썼지만 출처당 총 5~10MB 한도에 자주 부딪혀 저장이
+        조용히 실패하는 문제가 있었다. 자세한 이유는 아래 IndexedDB 구현부 주석
+        참고. 기존에 localStorage에 있던 데이터는 처음 실행될 때 자동으로
+        IndexedDB로 옮겨진다.)
    첫 호출에서 로컬 서버가 있는지 한 번만 확인(핑)하고, 그 결과를 기억해 이후
    호출은 곧장 맞는 쪽으로 간다.
 --------------------------------------------------------------------- */
 if (!window.storage){
   const LS_PREFIX = 'kg-notes:';
-  let serverMode = null; // null=미확인, true=로컬 서버, false=localStorage
+  let serverMode = null; // null=미확인, true=로컬 서버, false=브라우저(IndexedDB)
 
   async function detectLocalServer(){
     if (serverMode !== null) return serverMode;
@@ -562,6 +564,111 @@ if (!window.storage){
     return serverMode;
   }
 
+  /* -----------------------------------------------------------------
+     브라우저(GitHub Pages 등) 모드의 실제 저장소: IndexedDB.
+     예전에는 localStorage를 썼는데, localStorage는 키를 몇 개로 나누든
+     "출처당 총합 5~10MB"라는 한도 자체가 고정돼 있어서(키 분리로는 못 피함)
+     노트가 수백~천 개 단위로 쌓이면 QuotaExceededError가 나기 시작했다.
+     더 나쁜 건, 그 뒤로는 저장이 조용히 계속 실패하는데도 화면상으론 편집이
+     되는 것처럼 보여서 — 새로고침하면 최근 편집/동기화 결과가 통째로
+     사라지고, 그 여파로 "안 바뀐 노트도 매번 드라이브에 다시 올라가는"
+     동기화 오작동까지 이어졌다(동기화 시각이 저장 안 되니 매번 "안 올렸다"고
+     착각).
+     IndexedDB는 보통 디스크 여유공간의 상당 부분(수백MB~수GB)까지 쓸 수 있어
+     이 앱 규모에서는 같은 문제가 사실상 재발하지 않는다. get/set/delete/list
+     인터페이스는 그대로 유지해서 Store/Ledger 등 상위 코드는 손댈 필요가 없다.
+  ----------------------------------------------------------------- */
+  const IDB_NAME = 'kg-notes-idb';
+  const IDB_STORE = 'kv';
+  let idbOpenPromise = null;
+  function openIdb(){
+    if (idbOpenPromise) return idbOpenPromise;
+    idbOpenPromise = new Promise((resolve, reject)=>{
+      if (!window.indexedDB){ reject(new Error('이 브라우저는 IndexedDB를 지원하지 않습니다.')); return; }
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+    return idbOpenPromise;
+  }
+  function idbGet(key){
+    return openIdb().then(db => new Promise((resolve, reject)=>{
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    }));
+  }
+  function idbSet(key, value){
+    return openIdb().then(db => new Promise((resolve, reject)=>{
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, key);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    }));
+  }
+  function idbDelete(key){
+    return openIdb().then(db => new Promise((resolve, reject)=>{
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    }));
+  }
+  function idbKeys(){
+    return openIdb().then(db => new Promise((resolve, reject)=>{
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      if (store.getAllKeys){
+        const req = store.getAllKeys();
+        req.onsuccess = ()=> resolve(req.result);
+        req.onerror = ()=> reject(req.error);
+      } else {
+        // 아주 오래된 브라우저용 폴백: 커서로 하나씩 순회
+        const keys = [];
+        const req = store.openCursor();
+        req.onsuccess = (e)=>{
+          const cursor = e.target.result;
+          if (cursor){ keys.push(cursor.key); cursor.continue(); } else { resolve(keys); }
+        };
+        req.onerror = ()=> reject(req.error);
+      }
+    }));
+  }
+
+  // 예전 버전에서 localStorage에 저장돼 있던 데이터를 IndexedDB로 한 번만 옮긴다.
+  // 다 옮기고 나서야(성공을 확인한 뒤에만) localStorage 쪽을 비워 꽉 찬 용량을
+  // 돌려준다 — 중간에 실패하면 localStorage는 그대로 남아있으니 다음 로드 때
+  // 다시 시도되고, 이미 옮긴 항목을 다시 옮겨도 값이 같아 무해하다.
+  let migratePromise = null;
+  function migrateFromLocalStorageOnce(){
+    if (migratePromise) return migratePromise;
+    migratePromise = (async ()=>{
+      try{
+        const already = await idbGet('__migrated_from_localStorage__');
+        if (already) return;
+      }catch(e){ /* 플래그 확인 실패해도 이전은 시도해본다 */ }
+      try{
+        const toCopy = [];
+        for (let i=0; i<localStorage.length; i++){
+          const k = localStorage.key(i);
+          if (k && k.startsWith(LS_PREFIX)) toCopy.push(k);
+        }
+        for (const k of toCopy){
+          const value = localStorage.getItem(k);
+          if (value !== null) await idbSet(k.slice(LS_PREFIX.length), value);
+        }
+        await idbSet('__migrated_from_localStorage__', '1');
+        for (const k of toCopy) localStorage.removeItem(k);
+        if (toCopy.length) console.info('[연결 노트] 기존 localStorage 데이터 '+toCopy.length+'개 키를 IndexedDB로 이전했습니다.');
+      }catch(e){
+        console.warn('[연결 노트] localStorage → IndexedDB 이전 중 오류(다음에 다시 시도됩니다):', e);
+      }
+    })();
+    return migratePromise;
+  }
+
   window.storage = {
     async get(key, shared){
       if (await detectLocalServer()){
@@ -571,9 +678,10 @@ if (!window.storage){
         const value = await res.text();
         return { key, value, shared: !!shared };
       }
-      const raw = localStorage.getItem(LS_PREFIX+key);
-      if (raw === null) throw new Error('key not found: '+key);
-      return { key, value: raw, shared: !!shared };
+      await migrateFromLocalStorageOnce();
+      const value = await idbGet(key);
+      if (value === undefined || value === null) throw new Error('key not found: '+key);
+      return { key, value, shared: !!shared };
     },
     async set(key, value, shared){
       if (await detectLocalServer()){
@@ -581,10 +689,11 @@ if (!window.storage){
         if (!res.ok) throw new Error('로컬 서버 저장 실패 (HTTP '+res.status+')');
         return { key, value, shared: !!shared };
       }
+      await migrateFromLocalStorageOnce();
       try{
-        localStorage.setItem(LS_PREFIX+key, value);
+        await idbSet(key, value);
       }catch(e){
-        throw new Error('localStorage 저장 실패(용량 초과 가능): '+e.message);
+        throw new Error('저장 실패(IndexedDB, 용량 초과 가능): '+(e && e.message ? e.message : e));
       }
       return { key, value, shared: !!shared };
     },
@@ -593,7 +702,8 @@ if (!window.storage){
         try{ await fetch('/api/storage/'+encodeURIComponent(key), { method:'DELETE' }); }catch(e){ /* best effort */ }
         return { key, deleted:true, shared: !!shared };
       }
-      localStorage.removeItem(LS_PREFIX+key);
+      await migrateFromLocalStorageOnce();
+      try{ await idbDelete(key); }catch(e){ /* best effort */ }
       return { key, deleted:true, shared: !!shared };
     },
     async list(prefix, shared){
@@ -602,12 +712,10 @@ if (!window.storage){
         const data = res.ok ? await res.json() : { keys: [] };
         return { keys: data.keys||[], prefix, shared: !!shared };
       }
-      const p = LS_PREFIX+(prefix||'');
-      const keys = [];
-      for (let i=0;i<localStorage.length;i++){
-        const k = localStorage.key(i);
-        if (k && k.startsWith(p)) keys.push(k.slice(LS_PREFIX.length));
-      }
+      await migrateFromLocalStorageOnce();
+      const all = await idbKeys();
+      const p = prefix||'';
+      const keys = all.filter(k => typeof k === 'string' && k !== '__migrated_from_localStorage__' && k.startsWith(p));
       return { keys, prefix, shared: !!shared };
     }
   };
@@ -839,6 +947,8 @@ const state = {
   activeFolder: '__ALL__', // '__ALL__' | '__UNFILED__' | 폴더명
   expandedFolders: new Set(), // 폴더 트리에서 펼쳐진 경로들
   graphSelectedId: null,   // 그래프에서 클릭해 선택된 노드(사이드 패널에 표시 중인 노트)
+  graphExpandedClusters: new Set(), // 노트가 많을 때 클러스터 모드에서 사용자가 펼친 클러스터 id들
+  graphClusterMode: false, // 지금 그래프가 클러스터 모드로 그려지고 있는지
   settings: {},
   theme: 'dark',
   editorMode: 'write',
@@ -972,14 +1082,143 @@ function renderMarkdown(md){
 let canvas, ctx, zoomBehavior, transform = d3.zoomIdentity;
 let rafId = null, fpsLast = performance.now(), fpsFrames = 0, hoveredNodeId = null;
 
+// 노트가 이 개수를 넘으면 "클러스터 모드"로 전환한다. 링크로 이어진(=인접한) 노트들을
+// 하나의 큰 노드로 묶어서 보여주고, 그 노드를 클릭하면 펼쳐서 개별 노트로 보여준다.
+// (1500개를 통째로 d3-force 시뮬레이션에 넣으면 tick마다 계산량이 커져 랙이 심해진다.)
+const GRAPH_CLUSTER_THRESHOLD = 400;
+// 링크가 없는(고립된) 노트를 몇 개씩 한 묶음으로 뭉칠지. 폴더가 같으면 우선 폴더 단위로 묶는다.
+const GRAPH_BUCKET_SIZE = 40;
+
 function nodeRadius(n){
   if (n.ghost) return 3.2;
+  if (n.isCluster) return Math.min(9 + Math.sqrt(n.clusterSize||2) * 3.2, 46);
   return Math.min(4.5 + Math.sqrt(n.backlinkCount||0) * 2.3, 22);
 }
 
-function buildGraphData(){
+// 주어진 노트 묶음(notePool) 안에서만 링크를 따라가며 유니온-파인드로 "연결 성분"을 찾고,
+// 링크가 없어 홀로 남은 노트는 폴더 단위(그마저도 안 되면 고정 크기)로 묶는다. 연결 성분이
+// GRAPH_BUCKET_SIZE보다 크면 BFS로 그만큼씩 잘라 여러 클러스터로 나눈다 — 안 그러면 서로 다
+// 이어진 노트 수백~수천 개가 "펼쳐도 똑같이 큰 덩어리 하나"로 남아 끝내 개별 노트까지 못
+// 들어가는 문제가 생긴다. 이 조각내기 덕분에 클러스터는 항상 최대 GRAPH_BUCKET_SIZE개
+// 이하만 담으므로, 펼치기(클릭)는 재귀 없이 한 번이면 항상 개별 노트를 드러낸다.
+// 반환값: clusterOfId(노트id → 클러스터id), clusters(클러스터id → {id, memberIds, label})
+// * 유니온 시 항상 더 작은 id를 루트로 삼고 BFS도 정렬된 순서로 시작해, 노트 구성이 그대로면
+//   재계산해도 같은 클러스터 id가 나오게 한다(그래야 펼쳐둔 클러스터가 편집 한 번에 도로 안 접힌다).
+function computeGraphClusters(notePool){
+  const idsSet = new Set(notePool.map(n=>n.id));
+  const adjacency = new Map(); // 무방향 인접 리스트 (notePool 안쪽을 가리키는 링크만)
+  for (const n of notePool) adjacency.set(n.id, []);
+  for (const n of notePool){
+    for (const l of (state.idx.linksOf.get(n.id)||[])){
+      if (l.self || !l.targetId) continue;
+      if (!idsSet.has(l.targetId)) continue; // 이 묶음 밖을 가리키는 링크는 무시
+      adjacency.get(n.id).push(l.targetId);
+      adjacency.get(l.targetId).push(n.id);
+    }
+  }
+
+  const parent = new Map();
+  function find(x){
+    while (parent.get(x) !== x){ parent.set(x, parent.get(parent.get(x))); x = parent.get(x); }
+    return x;
+  }
+  function union(a,b){
+    let ra=find(a), rb=find(b);
+    if (ra===rb) return;
+    if (ra > rb){ const t=ra; ra=rb; rb=t; }
+    parent.set(rb, ra);
+  }
+  for (const n of notePool) parent.set(n.id, n.id);
+  for (const [a, nbs] of adjacency){ for (const b of nbs) union(a,b); }
+
+  const componentMembers = new Map(); // root -> noteId[]
+  for (const n of notePool){
+    const r = find(n.id);
+    if (!componentMembers.has(r)) componentMembers.set(r, []);
+    componentMembers.get(r).push(n.id);
+  }
+
+  const clusterOfId = new Map();
+  const clusters = new Map();
+  const isolated = [];
+
+  // BFS로 최대 capSize개씩 묶어 잘라낸다(그래프상 가까운 노트끼리 뭉치도록).
+  function bfsChunks(members, capSize){
+    const sorted = [...members].sort(); // 시작 노드 순서를 고정해 결과를 안정적으로 만든다
+    const memberSet = new Set(members);
+    const visited = new Set();
+    const chunks = [];
+    for (const start of sorted){
+      if (visited.has(start)) continue;
+      const chunk = [];
+      const queue = [start];
+      visited.add(start);
+      while (queue.length && chunk.length < capSize){
+        const cur = queue.shift();
+        chunk.push(cur);
+        // 청크가 이미 다 찼으면 더 이상 이웃을 탐색하지 않는다. 여기서 미리 visited로
+        // 표시해버리면, 정작 그 이웃은 이번 청크에 못 들어가고도 "이미 방문함" 취급돼
+        // 다음 청크에서도 시작점으로 못 뽑혀 영영 어떤 클러스터에도 안 들어가게 된다.
+        if (chunk.length >= capSize) break;
+        for (const nb of (adjacency.get(cur)||[])){
+          if (memberSet.has(nb) && !visited.has(nb)){ visited.add(nb); queue.push(nb); }
+        }
+      }
+      chunks.push(chunk);
+    }
+    return chunks;
+  }
+
+  for (const [root, members] of componentMembers){
+    if (members.length === 1){ isolated.push(members[0]); continue; }
+    const chunks = members.length > GRAPH_BUCKET_SIZE ? bfsChunks(members, GRAPH_BUCKET_SIZE) : [members];
+    chunks.forEach((chunk, idx)=>{
+      if (chunk.length < 2){ isolated.push(...chunk); return; }
+      const cid = 'cluster:'+root+(chunks.length>1 ? ':'+idx : '');
+      // 대표 라벨은 이 조각 안에서 백링크가 가장 많은(=가장 중심적인) 노트의 제목으로 삼는다.
+      let repTitle = '', repBacklinks = -1;
+      for (const id of chunk){
+        const bc = state.idx.backlinkCount.get(id)||0;
+        if (bc > repBacklinks){ repBacklinks = bc; repTitle = state.idx.byId.get(id)?.title || '제목 없음'; }
+      }
+      clusters.set(cid, { id:cid, memberIds:chunk, label:repTitle });
+      for (const id of chunk) clusterOfId.set(id, cid);
+    });
+  }
+
+  const byFolder = new Map();
+  for (const id of isolated){
+    const folderKey = state.idx.byId.get(id)?.folder || '';
+    if (!byFolder.has(folderKey)) byFolder.set(folderKey, []);
+    byFolder.get(folderKey).push(id);
+  }
+  const leftovers = [];
+  for (const [folderKey, ids] of byFolder){
+    ids.sort((a,b)=> (state.idx.byId.get(a)?.title||'').localeCompare(state.idx.byId.get(b)?.title||'', 'ko'));
+    for (let i=0; i<ids.length; i+=GRAPH_BUCKET_SIZE){
+      const chunk = ids.slice(i, i+GRAPH_BUCKET_SIZE);
+      if (chunk.length < 2){ leftovers.push(...chunk); continue; }
+      const cid = 'bucket:'+(folderKey||'__none__')+':'+i;
+      clusters.set(cid, { id:cid, memberIds:chunk, label: folderKey || '미분류 노트' });
+      for (const id of chunk) clusterOfId.set(id, cid);
+    }
+  }
+  // 폴더별로 묶고도 혼자 남은 노트는 폴더 구분 없이 다시 한 번 고정 크기로 묶어,
+  // 폴더가 제각각이라 위 단계에서 못 뭉친 경우에도 노드 수를 확실히 줄인다.
+  leftovers.sort((a,b)=> (state.idx.byId.get(a)?.title||'').localeCompare(state.idx.byId.get(b)?.title||'', 'ko'));
+  for (let i=0; i<leftovers.length; i+=GRAPH_BUCKET_SIZE){
+    const chunk = leftovers.slice(i, i+GRAPH_BUCKET_SIZE);
+    if (chunk.length < 2) continue; // 정말 마지막 하나만 남으면 그냥 개별 노드로 보여준다
+    const cid = 'bucket2:'+i;
+    clusters.set(cid, { id:cid, memberIds:chunk, label:'기타 노트' });
+    for (const id of chunk) clusterOfId.set(id, cid);
+  }
+
+  return { clusterOfId, clusters };
+}
+
+function buildFullGraphData(activeNotes){
   const nodes = [];
-  const activeNotes = state.notes.filter(n=>!n.deletedAt);
   for (const n of activeNotes){
     nodes.push({ id:n.id, title:n.title||'제목 없음', ghost:false, backlinkCount: state.idx.backlinkCount.get(n.id)||0 });
   }
@@ -1005,6 +1244,81 @@ function buildGraphData(){
   return { nodes, links };
 }
 
+// 노트가 GRAPH_CLUSTER_THRESHOLD를 넘을 때 쓰는 경로. computeGraphClusters가 이미 모든
+// 클러스터를 GRAPH_BUCKET_SIZE 이하로 잘라주기 때문에, 사용자가 클릭해서 펼친 클러스터는
+// 재귀 없이 한 번에 바로 개별 노트로 드러난다(클러스터 자체가 이미 작아서 다시 클러스터링할
+// 필요가 없다). 펼치지 않은 나머지는 큰 "묶음 노드" 하나로만 렌더링해 시뮬레이션에 들어가는
+// 노드 수를 억제한다.
+function buildClusteredGraphData(activeNotes){
+  const { clusterOfId, clusters } = computeGraphClusters(activeNotes);
+  const expanded = state.graphExpandedClusters;
+  const nodes = [];
+  const nodeIds = new Set();
+  const visibleIdOf = new Map(); // 실제 노트id -> 지금 화면에 보이는 대표 노드id(자기 자신 또는 소속 클러스터id)
+  const ghostSeen = new Map();
+
+  for (const n of activeNotes){
+    const cid = clusterOfId.get(n.id);
+    if (cid && !expanded.has(cid)){
+      visibleIdOf.set(n.id, cid);
+      if (!nodeIds.has(cid)){
+        nodeIds.add(cid);
+        const c = clusters.get(cid);
+        nodes.push({ id:cid, title:c.label+' 외 '+(c.memberIds.length-1)+'개', ghost:false, isCluster:true, clusterSize:c.memberIds.length, memberIds:c.memberIds, backlinkCount:0 });
+      }
+    } else {
+      nodeIds.add(n.id);
+      visibleIdOf.set(n.id, n.id);
+      nodes.push({ id:n.id, title:n.title||'제목 없음', ghost:false, backlinkCount: state.idx.backlinkCount.get(n.id)||0 });
+    }
+  }
+
+  const links = [];
+  const linkSeen = new Set();
+  for (const n of activeNotes){
+    const vSource = visibleIdOf.get(n.id);
+    for (const l of (state.idx.linksOf.get(n.id)||[])){
+      if (l.self) continue;
+      if (l.targetId){
+        if (!state.idx.byId.has(l.targetId)) continue;
+        const vTarget = visibleIdOf.get(l.targetId);
+        if (!vTarget || vSource === vTarget) continue; // 같은(아직 접힌) 클러스터 내부 링크는 생략
+        const key = vSource < vTarget ? vSource+'|'+vTarget : vTarget+'|'+vSource;
+        if (linkSeen.has(key)) continue;
+        linkSeen.add(key);
+        links.push({ source:vSource, target:vTarget, resolved:true });
+      } else {
+        // 고스트(아직 없는 노트) 링크는 출발 노트가 개별적으로 펼쳐져 보일 때만 추가한다.
+        // 안 그러면 클러스터가 많을 때 고스트 노드까지 함께 폭증할 수 있다.
+        if (vSource !== n.id) continue;
+        const key = l.title.toLowerCase();
+        let gid = ghostSeen.get(key);
+        if (!gid){
+          gid = 'ghost:'+key;
+          ghostSeen.set(key, gid);
+          nodes.push({ id:gid, title:l.title, ghost:true, backlinkCount:0 });
+          nodeIds.add(gid);
+        }
+        links.push({ source:n.id, target:gid, resolved:false });
+      }
+    }
+  }
+  return { nodes, links };
+}
+
+function buildGraphData(){
+  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  state.graphClusterMode = activeNotes.length > GRAPH_CLUSTER_THRESHOLD;
+  return state.graphClusterMode ? buildClusteredGraphData(activeNotes) : buildFullGraphData(activeNotes);
+}
+
+function collapseAllGraphClusters(){
+  if (!state.graphExpandedClusters.size) return;
+  state.graphExpandedClusters.clear();
+  rebuildGraphSimulation();
+  showToast('그래프를 클러스터 보기로 되돌렸습니다.');
+}
+
 function rebuildGraphSimulation(){
   const { nodes, links } = buildGraphData();
   const prev = state.graphNodesById;
@@ -1025,7 +1339,15 @@ function rebuildGraphSimulation(){
     .force('collide', d3.forceCollide(d=>nodeRadius(d)+3))
     .alphaDecay(0.026);
 
-  $('#graphStats').textContent = nodes.length+'개 노트 · '+links.filter(l=>l.resolved).length+'개 연결';
+  const totalActive = state.notes.filter(n=>!n.deletedAt).length;
+  const collapseBtn = $('#collapseClustersBtn');
+  if (state.graphClusterMode){
+    $('#graphStats').textContent = totalActive+'개 노트 · '+nodes.length+'개 노드로 표시(클러스터) · '+links.filter(l=>l.resolved).length+'개 연결';
+    if (collapseBtn) collapseBtn.style.display = state.graphExpandedClusters.size ? '' : 'none';
+  } else {
+    $('#graphStats').textContent = nodes.length+'개 노트 · '+links.filter(l=>l.resolved).length+'개 연결';
+    if (collapseBtn) collapseBtn.style.display = 'none';
+  }
   $('#emptyGraphHint').style.display = nodes.length ? 'none' : 'flex';
 }
 
@@ -1163,6 +1485,11 @@ function currentHighlight(){
     match.add(state.graphSelectedId);
   }
   if (!match.size) return { match, neighbor:new Set() };
+  // 매칭된 노트가 접혀있는 클러스터 안에 숨어 있으면, 그 클러스터 노드 자체를 매치로
+  // 간주해 강조해준다 — 안 그러면 클러스터 모드에서 검색해도 아무 데도 안 켜진 것처럼 보인다.
+  for (const n of state.graphNodes){
+    if (n.isCluster && n.memberIds && n.memberIds.some(id=>match.has(id))) match.add(n.id);
+  }
   const neighbor = new Set(match);
   for (const l of state.graphLinks){
     const s = typeof l.source==='object'?l.source.id:l.source;
@@ -1205,6 +1532,7 @@ function draw(){
   // 노드: 라벨은 기본적으로 숨겨두고 (1) 충분히 확대했거나 (2) 연결이 많은 허브 노드이거나
   // (3) 마우스가 올라가 있거나 (4) 지금 열려 있는 노트이거나 (5) 검색으로 강조된 노드일 때만
   // 보여준다. 전부 다 보여주면 노드가 많아질수록 글자가 겹쳐 연결 구조를 읽기 어려워진다.
+  // 단, 클러스터(여러 노트를 묶은 큰 노드)는 노드 수 자체가 적으므로 라벨을 항상 보여준다.
   const HUB_BACKLINKS = 3;
   for (const n of state.graphNodes){
     if (typeof n.x !== 'number') continue;
@@ -1215,20 +1543,29 @@ function draw(){
     const dim = dimAll && !neighbor.has(n.id);
     ctx.globalAlpha = dim ? 0.13 : 1;
     ctx.shadowBlur = n.ghost ? 0 : (isMatch || isHovered ? 16 : 7);
-    ctx.shadowColor = isMatch ? '#E3B23C' : 'rgba(94,200,216,.45)';
+    ctx.shadowColor = isMatch ? '#E3B23C' : (n.isCluster ? 'rgba(138,95,209,.5)' : 'rgba(94,200,216,.45)');
     ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
-    ctx.fillStyle = n.ghost ? '#545E73' : (isMatch ? '#E3B23C' : '#5EC8D8');
+    ctx.fillStyle = n.ghost ? '#545E73' : (isMatch ? '#E3B23C' : (n.isCluster ? '#8A5FD1' : '#5EC8D8'));
     ctx.fill();
     ctx.shadowBlur = 0;
-    if (isHovered && !n.ghost){
+    if (n.isCluster){
+      // "여러 개가 뭉쳐있다"는 걸 알아보기 쉽게 테두리를 두르고, 안에 개수를 적어준다.
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(232,235,240,.55)'; ctx.lineWidth = 1.6/transform.k; ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 '+Math.max(10, Math.min(r*0.8, 15))+'px ' + getComputedStyle(document.body).fontFamily;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(n.clusterSize), n.x, n.y);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    } else if (isHovered && !n.ghost){
       ctx.beginPath(); ctx.arc(n.x, n.y, r+3, 0, Math.PI*2);
       ctx.strokeStyle = '#E7E9EE'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
     }
-    const showLabel = transform.k > 0.9 || (n.backlinkCount||0) >= HUB_BACKLINKS || isHovered || isActiveNote || (dimAll && !dim);
+    const showLabel = n.isCluster || transform.k > 0.9 || (n.backlinkCount||0) >= HUB_BACKLINKS || isHovered || isActiveNote || (dimAll && !dim);
     if (showLabel && (!dim || !dimAll)){
       ctx.globalAlpha = dim ? 0.13 : 0.92;
-      ctx.fillStyle = n.ghost ? '#8A93A6' : '#E7E9EE';
-      ctx.font = (isHovered? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
+      ctx.fillStyle = n.ghost ? '#8A93A6' : (n.isCluster ? '#D9C4F5' : '#E7E9EE');
+      ctx.font = (isHovered || n.isCluster ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
       ctx.fillText(n.title, n.x + r + 4, n.y + 3.5);
     }
   }
@@ -1315,7 +1652,10 @@ function initGraph(){
     const [x,y] = transform.invert(d3.pointer(event, canvas));
     const n = nodeAt(x,y);
     if (!n) return;
-    if (n.ghost){
+    if (n.isCluster){
+      state.graphExpandedClusters.add(n.id);
+      rebuildGraphSimulation();
+    } else if (n.ghost){
       createNoteWithTitle(n.title, true);
       switchTab('editor');
     } else {
@@ -1336,6 +1676,7 @@ function initGraph(){
 
   $('#resetZoomBtn').addEventListener('click', fitGraphToView);
   $('#autoLinkBtn').addEventListener('click', runAiAutoLink);
+  $('#collapseClustersBtn').addEventListener('click', collapseAllGraphClusters);
 }
 
 function fitGraphToView(){
@@ -2756,6 +3097,7 @@ async function factoryResetAllNotes(){
   state.searchQuery = '';
   state.searchResults = [];
   state.graphSelectedId = null;
+  state.graphExpandedClusters = new Set();
   state.activeFolder = '__ALL__';
   state.expandedFolders = new Set();
   reindex();
