@@ -71,14 +71,38 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 .folder-item.active .fi-count{color:var(--gold);}
 .note-list{flex:1; overflow-y:auto; margin-top:12px; display:flex; flex-direction:column; gap:2px;}
 .note-item{
+  display:flex; align-items:flex-start; gap:8px;
   padding:8px 10px; border-radius:var(--radius); cursor:pointer; border:1px solid transparent;
+  user-select:none; -webkit-user-select:none;
 }
 .note-item:hover{background:var(--bg-hover);}
 .note-item.active{background:var(--gold-dim); border-color:var(--gold);}
 .note-item.dragging{opacity:.4;}
+.note-item.selected{background:rgba(138,95,209,.16); border-color:rgba(138,95,209,.55);}
+.note-item .ni-main{flex:1; min-width:0;}
 .note-item .ni-title{font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .note-item .ni-preview{font-size:11.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;}
 .note-item .ni-score{font-size:10px; color:var(--gold); float:right;}
+.ni-check{
+  width:18px; height:18px; margin-top:1px; border-radius:5px; border:1.5px solid var(--border);
+  flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:700; color:transparent; transition:background .12s, border-color .12s;
+}
+.note-item.selected .ni-check{background:#8A5FD1; border-color:#8A5FD1; color:#fff;}
+.selection-bar{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:9px 12px; margin:4px 0; border-radius:var(--radius);
+  background:rgba(138,95,209,.14); border:1px solid rgba(138,95,209,.4);
+  font-size:12.5px; color:var(--text);
+}
+.selection-bar .selection-actions{display:flex; gap:6px;}
+.selection-bar button{
+  background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
+  font-size:12px; padding:5px 10px; border-radius:6px;
+}
+#selDeleteBtn:hover{color:#E5766B; border-color:#E5766B;}
+#selMoveBtn:hover{color:#C9A8F0; border-color:#8A5FD1;}
+#selCancelBtn:hover{color:var(--text);}
 .sidebar-footer{
   display:flex; align-items:center; justify-content:space-between; padding-top:10px; margin-top:8px;
   border-top:1px solid var(--border); color:var(--text-faint); font-size:11.5px; gap:8px;
@@ -163,34 +187,37 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 /* graph */
 #view-graph{position:relative; flex-direction:column;}
 .graph-toolbar{
-  display:flex; align-items:center; gap:14px; padding:8px 16px; font-size:12px; color:var(--text-dim);
-  border-bottom:1px solid var(--border);
+  display:flex; flex-direction:column; gap:7px; padding:10px 16px;
+  font-size:12px; color:var(--text-dim);
+  background:linear-gradient(180deg, rgba(30,22,54,.55), rgba(14,17,28,.35));
+  border-bottom:1px solid rgba(148,120,220,.22);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
-#fpsCounter{font-family:var(--font-mono); color:var(--gold); min-width:58px;}
-#autoLinkBtn{
-  background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
-  font-size:12px; padding:5px 12px; border-radius:6px;
+.gt-row{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.gt-stats-row{color:var(--text-faint); font-size:11.5px;}
+#fpsCounter{font-family:var(--font-mono); color:var(--gold); min-width:52px;}
+#graphStats{color:var(--text-dim);}
+.gt-actions-row{gap:7px;}
+.gt-actions-row button, .gt-select{
+  background:rgba(255,255,255,.04); border:1px solid rgba(148,120,220,.28); color:var(--text-dim);
+  font-size:12px; padding:6px 12px; border-radius:20px; transition:border-color .15s, color .15s, background .15s;
 }
-#autoLinkBtn:hover{color:var(--gold); border-color:var(--gold);}
+.gt-select{padding-right:8px; max-width:150px; color:var(--text-dim); font-family:inherit;}
+.gt-select:hover, .gt-select:focus{border-color:#8A5FD1; color:var(--text); outline:none;}
+#autoLinkBtn:hover{color:var(--gold); border-color:var(--gold); background:rgba(227,178,60,.08);}
 #autoLinkBtn:disabled{opacity:.5; cursor:default;}
-#collapseClustersBtn{
-  background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
-  font-size:12px; padding:5px 12px; border-radius:6px;
-}
-#collapseClustersBtn:hover{color:#C9A8F0; border-color:#8A5FD1;}
-#resetZoomBtn{
-  margin-left:auto; background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
-  font-size:12px; padding:5px 12px; border-radius:6px;
-}
-#resetZoomBtn:hover{color:var(--text);}
-#graphCanvas{flex:1; display:block; cursor:grab;}
+#collapseClustersBtn:hover{color:#D9C4F5; border-color:#8A5FD1; background:rgba(138,95,209,.12);}
+#resetZoomBtn{margin-left:auto;}
+#resetZoomBtn:hover{color:var(--text); border-color:rgba(255,255,255,.4);}
+.graph-canvas-wrap{position:relative; flex:1; min-height:0; overflow:hidden;}
+#graphCanvas{width:100%; height:100%; display:block; cursor:grab; touch-action:none;}
 #graphCanvas:active{cursor:grabbing;}
 .empty-hint{
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  color:var(--text-faint); font-size:13px; pointer-events:none; top:37px;
+  color:var(--text-faint); font-size:13px; pointer-events:none;
 }
 .graph-note-panel{
-  position:absolute; top:37px; right:0; bottom:0; width:340px; max-width:88vw;
+  position:absolute; top:0; right:0; bottom:0; width:340px; max-width:88vw;
   background:var(--bg-elev); border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(0,0,0,.35);
   display:flex; flex-direction:column; transform:translateX(100%); transition:transform .18s ease; z-index:6;
 }
@@ -205,7 +232,8 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 .gnp-actions{padding:12px 16px; border-top:1px solid var(--border);}
 #gnpOpenFullBtn{width:100%; padding:8px 10px; font-size:12.5px;}
 @media (max-width:820px){
-  .graph-note-panel{width:100%; max-width:100%; top:37px;}
+  .graph-note-panel{width:100%; max-width:100%;}
+  .gt-select{max-width:120px;}
 }
 
 /* AI chat */
@@ -310,6 +338,14 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
     <div id="folderList" class="folder-list"></div>
     <button id="newNoteBtn">+ 새 노트 (Ctrl/Cmd+N)</button>
     <div id="noteList" class="note-list"></div>
+    <div id="selectionBar" class="selection-bar" hidden>
+      <span id="selectionCount">0개 선택됨</span>
+      <div class="selection-actions">
+        <button id="selMoveBtn" title="선택한 노트를 다른 폴더로 이동">📁 이동</button>
+        <button id="selDeleteBtn" title="선택한 노트를 휴지통으로 이동">🗑 삭제</button>
+        <button id="selCancelBtn" title="선택 취소">취소</button>
+      </div>
+    </div>
     <div class="sidebar-footer">
       <div class="sf-left">
         <span id="noteCount">0개 노트</span>
@@ -370,23 +406,32 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 
     <section id="view-graph" class="view">
       <div class="graph-toolbar">
-        <span id="fpsCounter">-- FPS</span>
-        <span id="graphStats">0개 노트 · 0개 연결</span>
-        <button id="autoLinkBtn" title="내용이 비슷한 노트끼리 자동으로 [[링크]]를 추가합니다">🔗 유사 노트 자동 연결</button>
-        <button id="collapseClustersBtn" title="펼친 클러스터를 모두 다시 묶습니다" style="display:none;">🔽 클러스터로 되돌리기</button>
-        <button id="resetZoomBtn">화면 맞춤</button>
-      </div>
-      <canvas id="graphCanvas"></canvas>
-      <div id="emptyGraphHint" class="empty-hint">노트를 추가하고 [[링크]]로 연결하면 여기에 그래프가 나타납니다.</div>
-      <div id="graphNotePanel" class="graph-note-panel">
-        <div class="gnp-header">
-          <strong id="gnpTitle"></strong>
-          <button id="gnpCloseBtn" title="닫기">×</button>
+        <div class="gt-row gt-stats-row">
+          <span id="fpsCounter">-- FPS</span>
+          <span id="graphStats">0개 노트 · 0개 연결</span>
         </div>
-        <div id="gnpMeta" class="gnp-meta"></div>
-        <div id="gnpContent" class="gnp-content"></div>
-        <div class="gnp-actions">
-          <button id="gnpOpenFullBtn">전체 화면에서 열기</button>
+        <div class="gt-row gt-actions-row">
+          <select id="graphFolderSelect" class="gt-select" title="특정 폴더만 그래프로 보기">
+            <option value="__ALL__">전체 폴더</option>
+          </select>
+          <button id="autoLinkBtn" title="내용이 비슷한 노트끼리 자동으로 [[링크]]를 추가합니다">🔗 자동 연결</button>
+          <button id="collapseClustersBtn" title="펼친 클러스터를 모두 다시 묶습니다" style="display:none;">🔽 되돌리기</button>
+          <button id="resetZoomBtn">⤢ 화면 맞춤</button>
+        </div>
+      </div>
+      <div class="graph-canvas-wrap">
+        <canvas id="graphCanvas"></canvas>
+        <div id="emptyGraphHint" class="empty-hint">노트를 추가하고 [[링크]]로 연결하면 여기에 그래프가 나타납니다.</div>
+        <div id="graphNotePanel" class="graph-note-panel">
+          <div class="gnp-header">
+            <strong id="gnpTitle"></strong>
+            <button id="gnpCloseBtn" title="닫기">×</button>
+          </div>
+          <div id="gnpMeta" class="gnp-meta"></div>
+          <div id="gnpContent" class="gnp-content"></div>
+          <div class="gnp-actions">
+            <button id="gnpOpenFullBtn">전체 화면에서 열기</button>
+          </div>
         </div>
       </div>
     </section>
@@ -488,6 +533,18 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
     </div>
 
     <button id="closeSettingsBtn">닫기</button>
+  </div>
+</div>
+
+<div id="bulkMoveModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h3>폴더로 이동</h3>
+    <p class="hint" id="bulkMoveHint">선택한 노트를 이동합니다.</p>
+    <input id="bulkMoveFolderInput" list="folderOptions" placeholder="예) 수업 설계 (비워두면 미분류)" />
+    <div class="row" style="margin-top:12px;">
+      <button id="bulkMoveConfirmBtn">이동</button>
+      <button id="bulkMoveCancelBtn">취소</button>
+    </div>
   </div>
 </div>
 
@@ -949,6 +1006,9 @@ const state = {
   graphSelectedId: null,   // 그래프에서 클릭해 선택된 노드(사이드 패널에 표시 중인 노트)
   graphExpandedClusters: new Set(), // 노트가 많을 때 클러스터 모드에서 사용자가 펼친 클러스터 id들
   graphClusterMode: false, // 지금 그래프가 클러스터 모드로 그려지고 있는지
+  graphFolderFilter: '__ALL__', // 그래프에 특정 폴더(+하위 폴더)만 보이게 필터링. '__ALL__'이면 전체
+  selectionMode: false,   // 노트 목록에서 꾹 눌러 여러 개를 고르는 중인지
+  selectedNoteIds: new Set(), // 선택 모드에서 체크된 노트 id들
   settings: {},
   theme: 'dark',
   editorMode: 'write',
@@ -1307,9 +1367,50 @@ function buildClusteredGraphData(activeNotes){
 }
 
 function buildGraphData(){
-  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  let activeNotes = state.notes.filter(n=>!n.deletedAt);
+  // 특정 폴더로 좁혀서 보는 중이면 그 폴더(+하위 폴더)의 노트만 남긴다. 사이드바 폴더
+  // 목록과 같은 규칙(정확히 일치 또는 "폴더/" 접두사)을 써서 동작이 일관되게 한다.
+  // 필터링을 클러스터 판단보다 먼저 해서, 폴더 하나로 좁혔을 때는 그 폴더 노트 수가
+  // 기준(GRAPH_CLUSTER_THRESHOLD) 이하라면 클러스터 없이 전부 개별 노드로 보여준다.
+  if (state.graphFolderFilter === '__UNFILED__'){
+    activeNotes = activeNotes.filter(n=>!n.folder);
+  } else if (state.graphFolderFilter && state.graphFolderFilter !== '__ALL__'){
+    const prefix = state.graphFolderFilter + '/';
+    activeNotes = activeNotes.filter(n => n.folder === state.graphFolderFilter || (n.folder && n.folder.startsWith(prefix)));
+  }
   state.graphClusterMode = activeNotes.length > GRAPH_CLUSTER_THRESHOLD;
-  return state.graphClusterMode ? buildClusteredGraphData(activeNotes) : buildFullGraphData(activeNotes);
+  const built = state.graphClusterMode ? buildClusteredGraphData(activeNotes) : buildFullGraphData(activeNotes);
+  built.scopedCount = activeNotes.length;
+  return built;
+}
+
+// 그래프 툴바의 폴더 필터 <select>를 사이드바와 같은 폴더 트리 데이터로 채운다.
+// 지금 선택된 값은 유지하되, 목록이 바뀌어 더 이상 존재하지 않는 폴더였다면 전체로 되돌린다.
+function renderGraphFolderOptions(){
+  const sel = $('#graphFolderSelect');
+  if (!sel) return;
+  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  const total = activeNotes.length;
+  const unfiled = activeNotes.filter(n=>!n.folder).length;
+  const tree = buildFolderTree(activeNotes);
+
+  const opts = ['<option value="__ALL__">전체 폴더 ('+total+')</option>'];
+  (function walk(node, depth){
+    const children = Array.from(node.children.values()).sort((a,b)=>a.name.localeCompare(b,'ko'));
+    for (const child of children){
+      const indent = '\u00A0\u00A0'.repeat(depth);
+      opts.push('<option value="'+escapeHtml(child.path)+'">'+indent+escapeHtml(child.name)+' ('+child.count+')</option>');
+      walk(child, depth+1);
+    }
+  })(tree, 0);
+  if (unfiled) opts.push('<option value="__UNFILED__">미분류 ('+unfiled+')</option>');
+
+  const stillExists = state.graphFolderFilter==='__ALL__' || state.graphFolderFilter==='__UNFILED__'
+    || opts.some(o=>o.includes('value="'+escapeHtml(state.graphFolderFilter)+'"'));
+  if (!stillExists) state.graphFolderFilter = '__ALL__';
+
+  sel.innerHTML = opts.join('');
+  sel.value = state.graphFolderFilter;
 }
 
 function collapseAllGraphClusters(){
@@ -1320,7 +1421,8 @@ function collapseAllGraphClusters(){
 }
 
 function rebuildGraphSimulation(){
-  const { nodes, links } = buildGraphData();
+  renderGraphFolderOptions();
+  const { nodes, links, scopedCount } = buildGraphData();
   const prev = state.graphNodesById;
   for (const n of nodes){
     const old = prev.get(n.id);
@@ -1339,13 +1441,15 @@ function rebuildGraphSimulation(){
     .force('collide', d3.forceCollide(d=>nodeRadius(d)+3))
     .alphaDecay(0.026);
 
-  const totalActive = state.notes.filter(n=>!n.deletedAt).length;
+  const scopedTotal = scopedCount ?? nodes.length;
   const collapseBtn = $('#collapseClustersBtn');
+  const scopeLabel = state.graphFolderFilter && state.graphFolderFilter!=='__ALL__'
+    ? ' (범위: '+(state.graphFolderFilter==='__UNFILED__' ? '미분류' : state.graphFolderFilter)+')' : '';
   if (state.graphClusterMode){
-    $('#graphStats').textContent = totalActive+'개 노트 · '+nodes.length+'개 노드로 표시(클러스터) · '+links.filter(l=>l.resolved).length+'개 연결';
+    $('#graphStats').textContent = scopedTotal+'개 노트'+scopeLabel+' · '+nodes.length+'개 노드로 표시(클러스터) · '+links.filter(l=>l.resolved).length+'개 연결';
     if (collapseBtn) collapseBtn.style.display = state.graphExpandedClusters.size ? '' : 'none';
   } else {
-    $('#graphStats').textContent = nodes.length+'개 노트 · '+links.filter(l=>l.resolved).length+'개 연결';
+    $('#graphStats').textContent = nodes.length+'개 노트'+scopeLabel+' · '+links.filter(l=>l.resolved).length+'개 연결';
     if (collapseBtn) collapseBtn.style.display = 'none';
   }
   $('#emptyGraphHint').style.display = nodes.length ? 'none' : 'flex';
@@ -1506,34 +1610,76 @@ function draw(){
   const rect = canvas.getBoundingClientRect();
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,rect.width,rect.height);
-  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#0B0E14';
+
+  // 은은한 비네트 배경 — 화면 중앙이 살짝 밝고 가장자리로 갈수록 어두워져 밋밋한
+  // 단색보다 훨씬 "디지털 캔버스" 같은 깊이감을 준다.
+  const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#0B0E14';
+  const vignette = ctx.createRadialGradient(rect.width/2, rect.height*0.4, 0, rect.width/2, rect.height*0.4, Math.max(rect.width,rect.height)*0.75);
+  vignette.addColorStop(0, 'rgba(52,36,86,.32)');
+  vignette.addColorStop(0.55, bg);
+  vignette.addColorStop(1, bg);
+  ctx.fillStyle = vignette;
   ctx.fillRect(0,0,rect.width,rect.height);
 
   ctx.translate(transform.x, transform.y);
   ctx.scale(transform.k, transform.k);
 
+  // 점 그리드 — Figma/옵시디언 캔버스 같은 "작업판" 느낌을 준다. 너무 축소된 상태에서
+  // 점 개수가 폭증하면 성능이 나빠지므로 화면에 찍힐 점 수를 계산해 그 이상이면 생략한다.
+  if (transform.k > 0.15){
+    const GRID = 46, dotR = 1.1/transform.k;
+    const invTL = transform.invert([0,0]);
+    const invBR = transform.invert([rect.width, rect.height]);
+    const x0 = Math.floor(invTL[0]/GRID)*GRID, x1 = invBR[0];
+    const y0 = Math.floor(invTL[1]/GRID)*GRID, y1 = invBR[1];
+    const cols = Math.ceil((x1-x0)/GRID), rows = Math.ceil((y1-y0)/GRID);
+    if (cols*rows < 2200){
+      ctx.fillStyle = 'rgba(163,140,230,.09)';
+      for (let gx=x0; gx<x1; gx+=GRID){
+        for (let gy=y0; gy<y1; gy+=GRID){
+          ctx.beginPath(); ctx.arc(gx, gy, dotR, 0, Math.PI*2); ctx.fill();
+        }
+      }
+    }
+  }
+
   const { match, neighbor } = currentHighlight();
   const dimAll = match.size > 0;
+  const pulse = 0.5 + 0.5*Math.sin(performance.now()/650); // 클러스터·검색매치 링에 쓸 숨쉬는 듯한 애니메이션 값(0~1)
 
   // edges
   for (const l of state.graphLinks){
     const s = l.source, t = l.target;
     if (typeof s!=='object' || typeof t!=='object') continue;
     const dim = dimAll && !(neighbor.has(s.id) && neighbor.has(t.id));
+    const touchesHover = !!hoveredNodeId && (s.id===hoveredNodeId || t.id===hoveredNodeId);
     ctx.strokeStyle = l.resolved
-      ? 'rgba(76,111,165,'+(dim?0.07:0.4)+')'
-      : 'rgba(84,94,115,'+(dim?0.05:0.22)+')';
+      ? (touchesHover ? 'rgba(158,180,255,'+(dim?0.1:0.85)+')' : 'rgba(112,132,198,'+(dim?0.06:0.4)+')')
+      : 'rgba(94,100,120,'+(dim?0.04:0.2)+')';
     ctx.setLineDash(l.resolved ? [] : [3,3]);
-    ctx.lineWidth = 1/transform.k;
+    ctx.lineWidth = (touchesHover ? 1.8 : 1)/transform.k;
     ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(t.x,t.y); ctx.stroke();
   }
   ctx.setLineDash([]);
 
-  // 노드: 라벨은 기본적으로 숨겨두고 (1) 충분히 확대했거나 (2) 연결이 많은 허브 노드이거나
-  // (3) 마우스가 올라가 있거나 (4) 지금 열려 있는 노트이거나 (5) 검색으로 강조된 노드일 때만
-  // 보여준다. 전부 다 보여주면 노드가 많아질수록 글자가 겹쳐 연결 구조를 읽기 어려워진다.
-  // 단, 클러스터(여러 노트를 묶은 큰 노드)는 노드 수 자체가 적으므로 라벨을 항상 보여준다.
+  // 라벨 예산: 확대 정도와 무관하게 화면에 글자가 한꺼번에 너무 많이 뜨지 않도록 한다.
+  // 클러스터/호버/선택/검색매치는 항상 보여주고, 나머지는 연결이 많은 노드부터 남은
+  // 예산만큼만 채운다 — 노드가 아무리 많아도 확대했을 때 글자가 다닥다닥 겹치지 않는다.
   const HUB_BACKLINKS = 3;
+  const LABEL_BUDGET = 70;
+  let labelIds = null;
+  if (transform.k > 0.55){
+    const always = [];
+    const candidates = [];
+    for (const n of state.graphNodes){
+      if (n.isCluster || n.id===hoveredNodeId || n.id===state.activeId || match.has(n.id)) always.push(n.id);
+      else if ((n.backlinkCount||0) >= HUB_BACKLINKS) candidates.push(n);
+    }
+    candidates.sort((a,b)=>(b.backlinkCount||0)-(a.backlinkCount||0));
+    const budgetLeft = Math.max(0, LABEL_BUDGET - always.length);
+    labelIds = new Set(always.concat(candidates.slice(0, budgetLeft).map(n=>n.id)));
+  }
+
   for (const n of state.graphNodes){
     if (typeof n.x !== 'number') continue;
     const r = nodeRadius(n);
@@ -1542,31 +1688,68 @@ function draw(){
     const isActiveNote = n.id === state.activeId;
     const dim = dimAll && !neighbor.has(n.id);
     ctx.globalAlpha = dim ? 0.13 : 1;
-    ctx.shadowBlur = n.ghost ? 0 : (isMatch || isHovered ? 16 : 7);
-    ctx.shadowColor = isMatch ? '#E3B23C' : (n.isCluster ? 'rgba(138,95,209,.5)' : 'rgba(94,200,216,.45)');
+
+    // 채우기: 클러스터·검색매치·호버/활성 노트는 위치 기준 그라디언트로 "빛나는 구슬"
+    // 느낌을 주고, 수가 훨씬 많은 일반 노드·고스트는 성능을 위해 단색으로 채운다.
+    let fill;
+    if (n.ghost){
+      fill = 'rgba(120,128,150,.85)';
+    } else if (isMatch){
+      const g = ctx.createRadialGradient(n.x-r*0.3,n.y-r*0.3,0,n.x,n.y,r*1.3);
+      g.addColorStop(0, '#FFE9AE'); g.addColorStop(1, '#D89B2E');
+      fill = g;
+    } else if (n.isCluster){
+      const g = ctx.createRadialGradient(n.x-r*0.3,n.y-r*0.3,0,n.x,n.y,r*1.3);
+      g.addColorStop(0, '#C6A6F5'); g.addColorStop(1, '#6A3FBF');
+      fill = g;
+    } else if (isHovered || isActiveNote){
+      const g = ctx.createRadialGradient(n.x-r*0.3,n.y-r*0.3,0,n.x,n.y,r*1.3);
+      g.addColorStop(0, '#B9F3FA'); g.addColorStop(1, '#2C93A8');
+      fill = g;
+    } else {
+      fill = '#4FA9BD';
+    }
+
+    ctx.shadowBlur = n.ghost ? 0 : (isMatch ? 14+pulse*8 : (n.isCluster ? 12+pulse*6 : (isHovered ? 16 : 6)));
+    ctx.shadowColor = isMatch ? '#F0C766' : (n.isCluster ? 'rgba(154,111,224,.65)' : 'rgba(94,200,216,.5)');
     ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
-    ctx.fillStyle = n.ghost ? '#545E73' : (isMatch ? '#E3B23C' : (n.isCluster ? '#8A5FD1' : '#5EC8D8'));
+    ctx.fillStyle = fill;
     ctx.fill();
     ctx.shadowBlur = 0;
+
     if (n.isCluster){
-      // "여러 개가 뭉쳐있다"는 걸 알아보기 쉽게 테두리를 두르고, 안에 개수를 적어준다.
+      // 숨쉬는 펄스 링으로 "여러 노트가 뭉쳐있다"는 느낌을 은은하게 강조한다.
+      ctx.beginPath(); ctx.arc(n.x, n.y, r+2+pulse*1.5, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(216,196,245,'+(0.25+pulse*0.35)+')'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
       ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
-      ctx.strokeStyle = 'rgba(232,235,240,.55)'; ctx.lineWidth = 1.6/transform.k; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
       ctx.fillStyle = '#fff';
       ctx.font = '700 '+Math.max(10, Math.min(r*0.8, 15))+'px ' + getComputedStyle(document.body).fontFamily;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(n.clusterSize), n.x, n.y);
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    } else if (isHovered && !n.ghost){
+    } else if (isMatch){
+      ctx.beginPath(); ctx.arc(n.x, n.y, r+2+pulse*1.5, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(255,230,170,'+(0.3+pulse*0.4)+')'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
+    } else if ((isHovered || isActiveNote) && !n.ghost){
       ctx.beginPath(); ctx.arc(n.x, n.y, r+3, 0, Math.PI*2);
-      ctx.strokeStyle = '#E7E9EE'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
+      ctx.strokeStyle = isActiveNote ? 'rgba(227,178,60,.8)' : '#E7E9EE'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
     }
-    const showLabel = n.isCluster || transform.k > 0.9 || (n.backlinkCount||0) >= HUB_BACKLINKS || isHovered || isActiveNote || (dimAll && !dim);
+
+    const showLabel = n.isCluster || isHovered || isActiveNote || isMatch || (labelIds && labelIds.has(n.id));
     if (showLabel && (!dim || !dimAll)){
-      ctx.globalAlpha = dim ? 0.13 : 0.92;
-      ctx.fillStyle = n.ghost ? '#8A93A6' : (n.isCluster ? '#D9C4F5' : '#E7E9EE');
-      ctx.font = (isHovered || n.isCluster ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
-      ctx.fillText(n.title, n.x + r + 4, n.y + 3.5);
+      ctx.globalAlpha = dim ? 0.13 : 1;
+      const label = n.title;
+      const labelColor = n.ghost ? '#9AA2B8' : (n.isCluster ? '#F0E8FF' : (isMatch ? '#FFF3D6' : '#E7E9EE'));
+      ctx.font = (isHovered || n.isCluster || isMatch ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
+      const tw = ctx.measureText(label).width;
+      const lx = n.x + r + 5, ly = n.y + 3.5;
+      // 라벨 뒤에 은은한 배경 필을 깔아 격자·엣지가 많은 배경 위에서도 글자가 잘 읽히게 한다.
+      ctx.fillStyle = 'rgba(9,11,18,.62)';
+      if (ctx.roundRect){ ctx.beginPath(); ctx.roundRect(lx-4, ly-11, tw+8, 15, 5); ctx.fill(); }
+      else { ctx.fillRect(lx-4, ly-11, tw+8, 15); }
+      ctx.fillStyle = labelColor;
+      ctx.fillText(label, lx, ly);
     }
   }
   ctx.globalAlpha = 1;
@@ -1677,6 +1860,12 @@ function initGraph(){
   $('#resetZoomBtn').addEventListener('click', fitGraphToView);
   $('#autoLinkBtn').addEventListener('click', runAiAutoLink);
   $('#collapseClustersBtn').addEventListener('click', collapseAllGraphClusters);
+  $('#graphFolderSelect').addEventListener('change', (e)=>{
+    state.graphFolderFilter = e.target.value;
+    state.graphExpandedClusters.clear(); // 다른 폴더로 좁히면 이전에 펼쳐둔 클러스터는 의미가 없어지므로 초기화
+    rebuildGraphSimulation();
+    fitGraphToView();
+  });
 }
 
 function fitGraphToView(){
@@ -2518,12 +2707,27 @@ function renderNoteList(){
   }
   for (const { note } of items){
     const el = document.createElement('div');
-    el.className = 'note-item' + (note.id===state.activeId ? ' active' : '');
-    el.innerHTML = `<div class="ni-title">${escapeHtml(note.title||'제목 없음')}</div>
-                     <div class="ni-preview">${escapeHtml(buildPreview(note.content))}</div>`;
-    el.onclick = ()=>{ openNote(note.id); switchTab('editor'); };
-    // 노트를 폴더 목록으로 끌어다 놓아 폴더를 옮길 수 있게 한다.
-    el.draggable = true;
+    const isSelected = state.selectedNoteIds.has(note.id);
+    el.className = 'note-item' + (note.id===state.activeId ? ' active' : '') + (isSelected ? ' selected' : '');
+    el.innerHTML = `${state.selectionMode ? `<span class="ni-check">${isSelected?'✓':''}</span>` : ''}
+                     <div class="ni-main">
+                       <div class="ni-title">${escapeHtml(note.title||'제목 없음')}</div>
+                       <div class="ni-preview">${escapeHtml(buildPreview(note.content))}</div>
+                     </div>`;
+    // 짧게 탭하면 열기, 꾹 누르면(약 480ms) 다중 선택 모드로 들어간다. 이미 선택 모드일
+    // 때는 짧은 탭도 열지 않고 그 노트의 선택 상태만 토글한다.
+    const longPress = attachLongPress(el, ()=>{
+      if (!state.selectionMode) enterSelectionMode();
+      toggleNoteSelection(note.id);
+    });
+    el.addEventListener('click', (e)=>{
+      if (longPress.consumeLongPress()){ e.preventDefault(); e.stopPropagation(); return; }
+      if (state.selectionMode){ toggleNoteSelection(note.id); return; }
+      openNote(note.id); switchTab('editor');
+    });
+    // 노트를 폴더 목록으로 끌어다 놓아 폴더를 옮길 수 있게 한다(선택 모드에서는 개별
+    // 드래그가 다중 선택의 의미와 헷갈릴 수 있어 막아둔다).
+    el.draggable = !state.selectionMode;
     el.addEventListener('dragstart', (e)=>{
       e.dataTransfer.setData('text/note-id', note.id);
       e.dataTransfer.effectAllowed = 'move';
@@ -2535,6 +2739,122 @@ function renderNoteList(){
   const activeCount = state.notes.filter(n=>!n.deletedAt).length;
   $('#noteCount').textContent = activeCount+'개 노트';
   renderFolderList();
+  updateSelectionBar();
+}
+
+// 포인터를 일정 시간(threshold) 이상 움직이지 않고 누르고 있으면 "꾹 누름"으로 판단한다.
+// 스크롤/일반 탭과 헷갈리지 않도록, 누른 채로 일정 거리 이상 움직이면 취소한다.
+// consumeLongPress()는 방금 그 상호작용이 꾹 누름이었는지 확인하고 플래그를 리셋한다
+// — 꾹 눌러 선택 모드에 들어간 직후 뒤따라오는 click 이벤트가 노트를 열어버리는 걸 막기 위함.
+function attachLongPress(el, onLongPress){
+  const DURATION = 480, THRESHOLD = 10;
+  let timer = null, startX = 0, startY = 0, longPressed = false;
+  function cancelTimer(){ if (timer){ clearTimeout(timer); timer = null; } }
+  el.addEventListener('pointerdown', (e)=>{
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = e.clientX; startY = e.clientY;
+    cancelTimer();
+    timer = setTimeout(()=>{ timer = null; longPressed = true; onLongPress(); }, DURATION);
+  });
+  el.addEventListener('pointermove', (e)=>{
+    if (!timer) return;
+    if (Math.abs(e.clientX-startX) > THRESHOLD || Math.abs(e.clientY-startY) > THRESHOLD) cancelTimer();
+  });
+  el.addEventListener('pointerup', cancelTimer);
+  el.addEventListener('pointercancel', cancelTimer);
+  el.addEventListener('pointerleave', cancelTimer);
+  return { consumeLongPress(){ const v = longPressed; longPressed = false; return v; } };
+}
+
+function enterSelectionMode(){
+  if (state.selectionMode) return;
+  state.selectionMode = true;
+  renderNoteList();
+}
+function exitSelectionMode(){
+  state.selectionMode = false;
+  state.selectedNoteIds.clear();
+  renderNoteList();
+}
+function toggleNoteSelection(id){
+  if (state.selectedNoteIds.has(id)) state.selectedNoteIds.delete(id);
+  else state.selectedNoteIds.add(id);
+  if (!state.selectedNoteIds.size) state.selectionMode = false; // 다 해제하면 선택 모드도 자동으로 빠져나간다
+  renderNoteList();
+}
+function updateSelectionBar(){
+  const bar = $('#selectionBar');
+  if (!bar) return;
+  const n = state.selectedNoteIds.size;
+  bar.hidden = !state.selectionMode || n === 0;
+  $('#selectionCount').textContent = n+'개 선택됨';
+}
+
+function bulkDeleteSelected(){
+  const ids = Array.from(state.selectedNoteIds);
+  if (!ids.length) return;
+  if (!confirm(ids.length+'개 노트를 휴지통으로 이동할까요? 휴지통에서 복원할 수 있습니다.')) return;
+  // deleteNote(id)를 그냥 반복 호출하면 그 함수 안의 confirm()이 노트 수만큼 계속 떠서
+  // 안 되므로, 여기서는 핵심 상태 변경만 직접 하고 렌더링·저장은 마지막에 한 번만 한다.
+  const now = Date.now();
+  const events = [];
+  let deletedCount = 0;
+  for (const id of ids){
+    const note = state.idx.byId.get(id);
+    if (!note || note.deletedAt) continue;
+    note.deletedAt = now;
+    if (state.activeId === id) state.activeId = null;
+    events.push(makeEvent('note.delete', id, {}));
+    deletedCount++;
+  }
+  reindex();
+  rebuildGraphSimulation();
+  renderEditor();
+  if (events.length) Ledger.append(events);
+  persistProjection();
+  exitSelectionMode(); // 내부에서 renderNoteList()까지 다시 그려준다
+  showToast(deletedCount+'개 노트를 휴지통으로 이동했습니다.');
+}
+
+function openBulkMoveModal(){
+  if (!state.selectedNoteIds.size) return;
+  $('#bulkMoveHint').textContent = '선택한 노트 '+state.selectedNoteIds.size+'개를 이동합니다.';
+  $('#bulkMoveFolderInput').value = '';
+  renderFolderOptions();
+  $('#bulkMoveModal').hidden = false;
+  $('#bulkMoveFolderInput').focus();
+}
+function closeBulkMoveModal(){
+  $('#bulkMoveModal').hidden = true;
+}
+function confirmBulkMove(){
+  const raw = $('#bulkMoveFolderInput').value.trim();
+  const folder = raw || null;
+  const ids = Array.from(state.selectedNoteIds);
+  if (!ids.length){ closeBulkMoveModal(); return; }
+  // moveNoteToFolder(id, folder)를 반복 호출하면 노트 수만큼 토스트가 줄줄이 쌓이므로,
+  // 여기서도 핵심 상태 변경만 직접 하고 렌더링·저장·안내는 마지막에 한 번만 한다.
+  const now = Date.now();
+  const events = [];
+  let movedCount = 0;
+  for (const id of ids){
+    const note = state.notes.find(n=>n.id===id);
+    if (!note) continue;
+    if ((note.folder||null) === folder) continue; // 이미 그 폴더면 건너뜀
+    note.folder = folder;
+    note.updatedAt = now;
+    events.push(makeEvent('note.edit', note.id, { title:note.title, content:note.content, tags:note.tags }, 'user'));
+    movedCount++;
+  }
+  reindex();
+  renderFolderOptions();
+  if (state.activeId && ids.includes(state.activeId)) renderEditor();
+  if (events.length) Ledger.append(events);
+  persistProjection();
+  scheduleAutoDriveSyncAfterEdit();
+  closeBulkMoveModal();
+  exitSelectionMode();
+  showToast(movedCount+'개 노트를 '+(folder ? '"'+folder+'"' : '미분류')+'(으)로 이동했습니다.');
 }
 
 // note.folder(예: "Notion/결혼/박하 출산노트")를 '/' 기준으로 쪼개서 트리로 묶는다.
@@ -2971,7 +3291,14 @@ function switchTab(tab){
   $('#view-'+tab).classList.add('active');
   if (tab==='graph'){ resizeGraphCanvas(); rebuildGraphSimulation(); startGraphLoop(); }
   else stopGraphLoop();
+  // 탭을 넘길 때마다 붕 떠 있는 오버레이(그래프 노트 패널, 모바일 폴더/백링크 바텀시트,
+  // 사이드바)를 전부 확실히 닫는다. 이걸 안 하면 예를 들어 그래프에서 노트를 열어본 뒤
+  // 다른 탭에 들렀다 그래프로 돌아왔을 때, 그 패널이 이상한 상태로 화면 한쪽에 남아있는
+  // 것처럼 보이는 문제가 있었다.
+  closeGraphNotePanel();
   closeMobileMeta();
+  closeSidebar();
+  if (state.selectionMode) exitSelectionMode();
 }
 
 function openMobileMeta(){
@@ -3370,6 +3697,12 @@ async function init(){
   // 휴지통
   $('#trashBtn').addEventListener('click', ()=>{ renderTrash(); $('#trashModal').hidden = false; });
   $('#closeTrashBtn').addEventListener('click', ()=>{ $('#trashModal').hidden = true; });
+  $('#selMoveBtn').addEventListener('click', openBulkMoveModal);
+  $('#selDeleteBtn').addEventListener('click', bulkDeleteSelected);
+  $('#selCancelBtn').addEventListener('click', exitSelectionMode);
+  $('#bulkMoveConfirmBtn').addEventListener('click', confirmBulkMove);
+  $('#bulkMoveCancelBtn').addEventListener('click', closeBulkMoveModal);
+  $('#bulkMoveFolderInput').addEventListener('keydown', (e)=>{ if (e.key==='Enter') confirmBulkMove(); });
   $('#trashModal').addEventListener('click', (e)=>{ if (e.target.id==='trashModal') $('#trashModal').hidden = true; });
 
   // 설정
