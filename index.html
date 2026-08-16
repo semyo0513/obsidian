@@ -197,6 +197,18 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 .gt-stats-row{color:var(--text-faint); font-size:11.5px;}
 #fpsCounter{font-family:var(--font-mono); color:var(--gold); min-width:52px;}
 #graphStats{color:var(--text-dim);}
+.gt-keyword-row{gap:6px;}
+.gt-keyword-input{
+  flex:1; min-width:0; background:rgba(255,255,255,.04); border:1px solid rgba(148,120,220,.28); color:var(--text);
+  font-size:12.5px; padding:6px 12px; border-radius:20px; font-family:inherit; transition:border-color .15s, background .15s;
+}
+.gt-keyword-input::placeholder{color:var(--text-faint);}
+.gt-keyword-input:focus{outline:none; border-color:#8A5FD1; background:rgba(255,255,255,.07);}
+.gt-keyword-clear{
+  background:rgba(255,255,255,.04); border:1px solid rgba(148,120,220,.28); color:var(--text-dim);
+  width:28px; height:28px; border-radius:50%; font-size:15px; line-height:1; flex-shrink:0; padding:0;
+}
+.gt-keyword-clear:hover{color:var(--text); border-color:rgba(255,255,255,.4);}
 .gt-actions-row{gap:7px;}
 .gt-actions-row button, .gt-select{
   background:rgba(255,255,255,.04); border:1px solid rgba(148,120,220,.28); color:var(--text-dim);
@@ -409,6 +421,10 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
         <div class="gt-row gt-stats-row">
           <span id="fpsCounter">-- FPS</span>
           <span id="graphStats">0개 노트 · 0개 연결</span>
+        </div>
+        <div class="gt-row gt-keyword-row">
+          <input id="graphKeywordInput" class="gt-keyword-input" type="text" placeholder="🔍 키워드로 그래프 재구성…" />
+          <button id="graphKeywordClearBtn" class="gt-keyword-clear" title="키워드 지우기" style="display:none;">×</button>
         </div>
         <div class="gt-row gt-actions-row">
           <select id="graphFolderSelect" class="gt-select" title="특정 폴더만 그래프로 보기">
@@ -1007,6 +1023,10 @@ const state = {
   graphExpandedClusters: new Set(), // 노트가 많을 때 클러스터 모드에서 사용자가 펼친 클러스터 id들
   graphClusterMode: false, // 지금 그래프가 클러스터 모드로 그려지고 있는지
   graphFolderFilter: '__ALL__', // 그래프에 특정 폴더(+하위 폴더)만 보이게 필터링. '__ALL__'이면 전체
+  graphKeyword: '',            // 그래프를 이 키워드 중심으로 재구성해서 보여주는 중이면 값이 들어있음
+  graphKeywordMatchIds: null,  // Set<noteId> | null — graphKeyword로 찾은 노트 id들(프레임마다 재계산 안 하려고 캐싱)
+  graphKeywordFitTimer: null,  // 키워드 포커스 힘을 준 뒤 잠깐 있다가 자동으로 화면을 맞추는 타이머
+  graphFadingNodes: new Map(), // 방금 화면에서 사라진 노드를 잠깐 더 그려서 스르륵 사라지게(fade-out) 하는 용도
   selectionMode: false,   // 노트 목록에서 꾹 눌러 여러 개를 고르는 중인지
   selectedNoteIds: new Set(), // 선택 모드에서 체크된 노트 id들
   settings: {},
@@ -1424,10 +1444,28 @@ function rebuildGraphSimulation(){
   renderGraphFolderOptions();
   const { nodes, links, scopedCount } = buildGraphData();
   const prev = state.graphNodesById;
+  const now = performance.now();
+  const nextIds = new Set(nodes.map(n=>n.id));
+  let carriedOver = 0;
   for (const n of nodes){
     const old = prev.get(n.id);
-    if (old){ n.x=old.x; n.y=old.y; n.vx=old.vx; n.vy=old.vy; }
+    if (old){ n.x=old.x; n.y=old.y; n.vx=old.vx; n.vy=old.vy; n._enterAt = old._enterAt; carriedOver++; }
+    else { n._enterAt = now; } // 새로 나타난 노드 — draw()에서 살짝 커지며 페이드인시킨다
   }
+  // 방금까지 있었는데 이번엔 사라진 노드는 바로 지우지 않고 잠깐 더 그려서(fade-out) 부드럽게
+  // 없어지게 한다 — 폴더를 바꾸거나 클러스터를 펼치고 접을 때 노드가 뚝뚝 끊겨 사라지는
+  // 느낌 대신 스르륵 사라지는 애니메이션이 되게 한다.
+  const FADE_OUT_MS = 420;
+  for (const [id, old] of prev){
+    if (!nextIds.has(id) && typeof old.x === 'number'){
+      state.graphFadingNodes.set(id+'@'+now, { ...old, _fadeStart: now });
+    }
+  }
+  if (state.graphFadingNodes.size > 400){ // 방어적 상한 — 이론상 거의 안 쌓이지만 혹시 몰라 정리
+    const cutoff = now - FADE_OUT_MS;
+    for (const [key, fn] of state.graphFadingNodes) if (fn._fadeStart < cutoff) state.graphFadingNodes.delete(key);
+  }
+
   state.graphNodesById = new Map(nodes.map(n=>[n.id,n]));
   state.graphNodes = nodes;
   state.graphLinks = links;
@@ -1441,6 +1479,27 @@ function rebuildGraphSimulation(){
     .force('collide', d3.forceCollide(d=>nodeRadius(d)+3))
     .alphaDecay(0.026);
 
+  // 대부분의 노드가 이전과 같으면(=자잘한 변화) 살살 재정렬되도록 낮은 에너지로 시작하고,
+  // 노드 구성이 크게 바뀌었으면(=폴더를 아예 다른 곳으로 바꾸는 등) 원래대로 힘차게 다시 배치한다.
+  const overlapRatio = prev.size ? carriedOver/prev.size : 0;
+  state.simulation.alpha(overlapRatio > 0.5 ? 0.45 : 1);
+
+  // 키워드로 그래프를 재구성하는 중이면, 매치된 노트(+그 1촌 이웃)를 화면 중앙 쪽으로 끌어
+  // 당기는 힘을 추가해 "키워드 중심 그래프"처럼 보이게 하고, 시뮬레이션 열을 다시 올려
+  // 눈에 보이게 애니메이션되며 재배치되게 한다.
+  if (state.graphKeywordMatchIds && state.graphKeywordMatchIds.size){
+    const focusIds = computeFocusNodeIds(nodes, links, state.graphKeywordMatchIds);
+    if (focusIds.size){
+      const cx = rect.width/2, cy = rect.height/2;
+      state.simulation
+        .force('focusX', d3.forceX(cx).strength(d=> focusIds.has(d.id) ? 0.16 : 0))
+        .force('focusY', d3.forceY(cy).strength(d=> focusIds.has(d.id) ? 0.16 : 0))
+        .alpha(0.9);
+      clearTimeout(state.graphKeywordFitTimer);
+      state.graphKeywordFitTimer = setTimeout(fitGraphToView, 650);
+    }
+  }
+
   const scopedTotal = scopedCount ?? nodes.length;
   const collapseBtn = $('#collapseClustersBtn');
   const scopeLabel = state.graphFolderFilter && state.graphFolderFilter!=='__ALL__'
@@ -1453,6 +1512,28 @@ function rebuildGraphSimulation(){
     if (collapseBtn) collapseBtn.style.display = 'none';
   }
   $('#emptyGraphHint').style.display = nodes.length ? 'none' : 'flex';
+}
+
+// 키워드로 찾은 노트(noteMatchIds)를 기준으로, 지금 화면에 실제로 보이는 노드 중 어떤 걸
+// 중앙으로 끌어당길지 정한다. 매치된 노트가 접힌 클러스터 안에 있으면 그 클러스터 노드를
+// 대신 끌어당기고, 매치 자체뿐 아니라 1촌 이웃까지 포함해 주변 맥락도 함께 보이게 한다.
+function computeFocusNodeIds(nodes, links, noteMatchIds){
+  const focus = new Set();
+  for (const n of nodes){
+    if (n.isCluster){
+      if (n.memberIds && n.memberIds.some(id=>noteMatchIds.has(id))) focus.add(n.id);
+    } else if (noteMatchIds.has(n.id)){
+      focus.add(n.id);
+    }
+  }
+  const withNeighbors = new Set(focus);
+  for (const l of links){
+    const s = typeof l.source==='object'?l.source.id:l.source;
+    const t = typeof l.target==='object'?l.target.id:l.target;
+    if (focus.has(s)) withNeighbors.add(t);
+    if (focus.has(t)) withNeighbors.add(s);
+  }
+  return withNeighbors;
 }
 
 /* ------------------------- 유사 노트 자동 연결 ------------------------- */
@@ -1580,10 +1661,13 @@ function nodeAt(x, y){
 }
 
 function currentHighlight(){
-  // 검색어가 있으면 매칭 노트 + 1차 연결 노드만 강조. 검색 중이 아니고 그래프에서
-  // 노드를 하나 선택해뒀다면 그 노드 + 직접 연결된 노드만 강조한다.
+  // 그래프 전용 키워드가 입력돼 있으면 그걸 최우선으로 강조한다(키워드 중심 재구성과
+  // 짝을 이뤄, 끌어당겨진 노드가 시각적으로도 밝게 표시되게). 없으면 기존처럼 사이드바
+  // 검색어나 그래프에서 선택해둔 노드를 강조한다.
   const match = new Set();
-  if (state.searchQuery && state.searchResults.length){
+  if (state.graphKeywordMatchIds && state.graphKeywordMatchIds.size){
+    for (const id of state.graphKeywordMatchIds) match.add(id);
+  } else if (state.searchQuery && state.searchResults.length){
     for (const r of state.searchResults) match.add(r.id);
   } else if (state.graphSelectedId){
     match.add(state.graphSelectedId);
@@ -1662,32 +1746,58 @@ function draw(){
   }
   ctx.setLineDash([]);
 
-  // 라벨 예산: 확대 정도와 무관하게 화면에 글자가 한꺼번에 너무 많이 뜨지 않도록 한다.
-  // 클러스터/호버/선택/검색매치는 항상 보여주고, 나머지는 연결이 많은 노드부터 남은
-  // 예산만큼만 채운다 — 노드가 아무리 많아도 확대했을 때 글자가 다닥다닥 겹치지 않는다.
-  const HUB_BACKLINKS = 3;
-  const LABEL_BUDGET = 70;
-  let labelIds = null;
-  if (transform.k > 0.55){
+  // 방금까지 있었지만 이번 재구성에서 빠진 노드들을 잠깐 옅어지며 그려서(fade-out)
+  // 화면에서 뚝 끊겨 사라지는 대신 스르륵 없어지는 것처럼 보이게 한다.
+  const FADE_OUT_MS = 420;
+  if (state.graphFadingNodes.size){
+    const nowMs = performance.now();
+    for (const [key, fn] of state.graphFadingNodes){
+      const t = (nowMs - fn._fadeStart) / FADE_OUT_MS;
+      if (t >= 1){ state.graphFadingNodes.delete(key); continue; }
+      ctx.globalAlpha = (1-t) * 0.55;
+      const r = nodeRadius(fn);
+      ctx.beginPath(); ctx.arc(fn.x, fn.y, r, 0, Math.PI*2);
+      ctx.fillStyle = fn.isCluster ? '#8A5FD1' : (fn.ghost ? '#788096' : '#4FA9BD');
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 라벨 표시 규칙:
+  //  - 화면에 그려지는 노드가 적을 때(작은 볼트, 폴더로 좁힌 그래프 등)는 확대 정도와
+  //    상관없이 라벨을 전부 보여준다 — 이름을 보려고 노드를 일일이 눌러봐야 하는 답답함을 없앤다.
+  //  - 노드가 많아지면(주로 클러스터 모드) 그때부터 예산제로 바뀌되, 문턱값에서 뚝 끊기지
+  //    않도록 일정 확대 구간(LABEL_FADE_LO~HI)에 걸쳐 서서히 나타나게 한다.
+  const LABEL_ALWAYS_ON = 90;
+  const LABEL_BUDGET = 90;
+  const LABEL_FADE_LO = 0.28, LABEL_FADE_HI = 0.6;
+  const showAllLabels = state.graphNodes.length <= LABEL_ALWAYS_ON;
+  let labelIds = null, labelFade = 1;
+  if (!showAllLabels){
+    labelFade = Math.max(0, Math.min(1, (transform.k - LABEL_FADE_LO) / (LABEL_FADE_HI - LABEL_FADE_LO)));
     const always = [];
     const candidates = [];
     for (const n of state.graphNodes){
       if (n.isCluster || n.id===hoveredNodeId || n.id===state.activeId || match.has(n.id)) always.push(n.id);
-      else if ((n.backlinkCount||0) >= HUB_BACKLINKS) candidates.push(n);
+      else candidates.push(n);
     }
     candidates.sort((a,b)=>(b.backlinkCount||0)-(a.backlinkCount||0));
     const budgetLeft = Math.max(0, LABEL_BUDGET - always.length);
     labelIds = new Set(always.concat(candidates.slice(0, budgetLeft).map(n=>n.id)));
   }
 
+  const ENTER_MS = 380;
+  const nowMs2 = performance.now();
   for (const n of state.graphNodes){
     if (typeof n.x !== 'number') continue;
-    const r = nodeRadius(n);
+    const enterT = n._enterAt ? Math.max(0, Math.min(1, (nowMs2 - n._enterAt) / ENTER_MS)) : 1;
+    const enterEase = 1 - Math.pow(1-enterT, 3); // easeOutCubic — 튀어나오듯 살짝 빠르게 커졌다 멎는 느낌
+    const r = nodeRadius(n) * (0.55 + 0.45*enterEase);
     const isMatch = match.has(n.id);
     const isHovered = n.id === hoveredNodeId;
     const isActiveNote = n.id === state.activeId;
     const dim = dimAll && !neighbor.has(n.id);
-    ctx.globalAlpha = dim ? 0.13 : 1;
+    ctx.globalAlpha = (dim ? 0.13 : 1) * enterEase;
 
     // 채우기: 클러스터·검색매치·호버/활성 노트는 위치 기준 그라디언트로 "빛나는 구슬"
     // 느낌을 주고, 수가 훨씬 많은 일반 노드·고스트는 성능을 위해 단색으로 채운다.
@@ -1736,9 +1846,11 @@ function draw(){
       ctx.strokeStyle = isActiveNote ? 'rgba(227,178,60,.8)' : '#E7E9EE'; ctx.lineWidth = 1.4/transform.k; ctx.stroke();
     }
 
-    const showLabel = n.isCluster || isHovered || isActiveNote || isMatch || (labelIds && labelIds.has(n.id));
-    if (showLabel && (!dim || !dimAll)){
-      ctx.globalAlpha = dim ? 0.13 : 1;
+    const alwaysShowLabel = n.isCluster || isHovered || isActiveNote || isMatch;
+    const inBudget = showAllLabels || (labelIds && labelIds.has(n.id));
+    const fadeAlpha = alwaysShowLabel || showAllLabels ? 1 : labelFade;
+    if ((alwaysShowLabel || inBudget) && fadeAlpha > 0.02 && (!dim || !dimAll)){
+      ctx.globalAlpha = (dim ? 0.13 : 1) * fadeAlpha;
       const label = n.title;
       const labelColor = n.ghost ? '#9AA2B8' : (n.isCluster ? '#F0E8FF' : (isMatch ? '#FFF3D6' : '#E7E9EE'));
       ctx.font = (isHovered || n.isCluster || isMatch ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
@@ -1866,6 +1978,22 @@ function initGraph(){
     rebuildGraphSimulation();
     fitGraphToView();
   });
+  $('#graphKeywordInput').addEventListener('input', (e)=> runGraphKeywordSearch(e.target.value));
+  $('#graphKeywordClearBtn').addEventListener('click', ()=>{
+    $('#graphKeywordInput').value = '';
+    applyGraphKeyword('');
+  });
+}
+
+// 키워드 입력마다 매번 검색을 다시 돌리면(특히 draw()가 매 프레임 부르는 currentHighlight
+// 안에서) 비용이 크므로, 타이핑이 잠깐 멈췄을 때 한 번만 계산해서 캐싱해둔다.
+const runGraphKeywordSearch = debounce((value)=> applyGraphKeyword(value), 220);
+function applyGraphKeyword(value){
+  state.graphKeyword = value.trim();
+  state.graphKeywordMatchIds = state.graphKeyword ? new Set(searchNotes(state.graphKeyword, 300).map(r=>r.id)) : null;
+  const clearBtn = $('#graphKeywordClearBtn');
+  if (clearBtn) clearBtn.style.display = state.graphKeyword ? '' : 'none';
+  rebuildGraphSimulation();
 }
 
 function fitGraphToView(){
@@ -2235,12 +2363,20 @@ const GoogleDrive = {
   },
 };
 let driveSyncBusy = false;
+let driveSyncRetryPending = false;
 let driveLastAutoSyncErrorMsg = null;
 
 async function syncWithDrive(opts={}){
   const silent = !!opts.silent;
   if (driveSyncBusy){
-    if (!silent) showToast('이미 동기화가 진행 중입니다. 잠시 후 다시 시도해주세요.');
+    if (silent){
+      // 편집이 들어온 시점에 마침 동기화가 이미 진행 중이었다면 조용히 버리지 않고
+      // "끝나면 한 번 더" 표시를 남겨서, 방금 한 편집이 이번 자동 동기화 사이클에서
+      // 누락되는 일이 없게 한다(다음 정기 동기화까지 몇 분씩 기다리지 않아도 됨).
+      driveSyncRetryPending = true;
+    } else {
+      showToast('이미 동기화가 진행 중입니다. 잠시 후 다시 시도해주세요.');
+    }
     return;
   }
   const statusEl = $('#driveSyncStatus');
@@ -2433,6 +2569,12 @@ async function syncWithDrive(opts={}){
   }finally{
     driveSyncBusy = false;
     btn.disabled = false;
+    if (driveSyncRetryPending){
+      // 방금 동기화가 도는 동안 편집이 들어와 있었다는 뜻 — 잠깐 텀을 두고 한 번 더
+      // 조용히 동기화해서 그 편집이 몇 분씩 묵히지 않고 곧바로 반영되게 한다.
+      driveSyncRetryPending = false;
+      setTimeout(()=>{ if (driveAutoSyncReady()) syncWithDrive({ silent:true }); }, 800);
+    }
   }
 }
 /* --------------------------- 구글 드라이브 자동 동기화 --------------------------- */
@@ -2443,13 +2585,14 @@ function driveAutoSyncReady(){
   return !!(state.settings.driveClientId||'').trim() && state.settings.driveAutoSync !== false;
 }
 
-// 편집을 멈추고 일정 시간(6초) 지나면 자동으로 동기화한다.
-// 로컬 저장(persistEdit, 0.7초 디바운스)보다 훨씬 길게 잡아서, 타이핑 중에는
-// 절대 드라이브로 요청이 나가지 않고 정말 "멈췄을 때"만 나가게 한다.
+// 편집을 멈추고 짧게(1.2초) 지나면 자동으로 동기화한다. 로컬 저장(persistEdit, 0.7초
+// 디바운스)이 먼저 끝난 뒤 살짝 뒤이어 드라이브로 올라가되, 예전(6초 대기)보다 훨씬
+// 빠르게 반영되도록 줄였다. 타이핑 중에는 계속 디바운스가 밀리므로 여전히 "멈췄을 때"만
+// 나가고, 동기화 도중 편집이 들어오면 위 syncWithDrive의 재시도 로직이 이어서 처리한다.
 const scheduleAutoDriveSyncAfterEdit = debounce(()=>{
   if (!driveAutoSyncReady()) return;
   syncWithDrive({ silent:true });
-}, 6000);
+}, 1200);
 
 let driveAutoSyncTimer = null;
 function setupDriveAutoSyncTimer(){
