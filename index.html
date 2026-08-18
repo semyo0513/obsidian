@@ -1280,7 +1280,10 @@ function computeGraphClusters(notePool){
       const chunk = ids.slice(i, i+GRAPH_BUCKET_SIZE);
       if (chunk.length < 2){ leftovers.push(...chunk); continue; }
       const cid = 'bucket:'+(folderKey||'__none__')+':'+i;
-      clusters.set(cid, { id:cid, memberIds:chunk, label: folderKey || '미분류 노트' });
+      // 라벨은 전체 경로("Apple Notes/업무/아이디어") 대신 마지막 폴더명만("아이디어") 써서
+      // 짧게 유지한다 — 안 그러면 라벨이 너무 길어져 화면에서 서로 겹치기 훨씬 쉬워진다.
+      const shortLabel = folderKey ? folderKey.split('/').pop() : '미분류 노트';
+      clusters.set(cid, { id:cid, memberIds:chunk, label: shortLabel });
       for (const id of chunk) clusterOfId.set(id, cid);
     }
   }
@@ -1755,10 +1758,10 @@ function draw(){
     const dim = dimAll && !(neighbor.has(s.id) && neighbor.has(t.id));
     const touchesHover = !!hoveredNodeId && (s.id===hoveredNodeId || t.id===hoveredNodeId);
     ctx.strokeStyle = l.resolved
-      ? (touchesHover ? 'rgba(158,180,255,'+(dim?0.1:0.85)+')' : 'rgba(112,132,198,'+(dim?0.06:0.4)+')')
-      : 'rgba(94,100,120,'+(dim?0.04:0.2)+')';
+      ? (touchesHover ? 'rgba(158,180,255,'+(dim?0.1:0.85)+')' : 'rgba(112,132,198,'+(dim?0.05:0.24)+')')
+      : 'rgba(94,100,120,'+(dim?0.03:0.14)+')';
     ctx.setLineDash(l.resolved ? [] : [3,3]);
-    ctx.lineWidth = (touchesHover ? 1.8 : 1)/transform.k;
+    ctx.lineWidth = (touchesHover ? 1.8 : 0.9)/transform.k;
     ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(t.x,t.y); ctx.stroke();
   }
   ctx.setLineDash([]);
@@ -1805,6 +1808,8 @@ function draw(){
 
   const ENTER_MS = 380;
   const nowMs2 = performance.now();
+  const MAX_LABEL_CHARS = 22; // 라벨이 너무 길면 그 자체로 겹침의 주 원인이 되므로 잘라낸다
+  const labelQueue = []; // 이번 프레임에 그릴 라벨 후보들 — 다 그리고 나서 한꺼번에 겹치지 않게 배치한다
   for (const n of state.graphNodes){
     if (typeof n.x !== 'number') continue;
     const enterT = n._enterAt ? Math.max(0, Math.min(1, (nowMs2 - n._enterAt) / ENTER_MS)) : 1;
@@ -1867,19 +1872,49 @@ function draw(){
     const inBudget = showAllLabels || (labelIds && labelIds.has(n.id));
     const fadeAlpha = alwaysShowLabel || showAllLabels ? 1 : labelFade;
     if ((alwaysShowLabel || inBudget) && fadeAlpha > 0.02 && (!dim || !dimAll)){
-      ctx.globalAlpha = (dim ? 0.13 : 1) * fadeAlpha;
-      const label = n.title;
-      const labelColor = n.ghost ? '#9AA2B8' : (n.isCluster ? '#F0E8FF' : (isMatch ? '#FFF3D6' : '#E7E9EE'));
-      ctx.font = (isHovered || n.isCluster || isMatch ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
-      const tw = ctx.measureText(label).width;
-      const lx = n.x + r + 5, ly = n.y + 3.5;
-      // 라벨 뒤에 은은한 배경 필을 깔아 격자·엣지가 많은 배경 위에서도 글자가 잘 읽히게 한다.
-      ctx.fillStyle = 'rgba(9,11,18,.62)';
-      if (ctx.roundRect){ ctx.beginPath(); ctx.roundRect(lx-4, ly-11, tw+8, 15, 5); ctx.fill(); }
-      else { ctx.fillRect(lx-4, ly-11, tw+8, 15); }
-      ctx.fillStyle = labelColor;
-      ctx.fillText(label, lx, ly);
+      const raw = n.title || '';
+      const text = raw.length > MAX_LABEL_CHARS ? raw.slice(0, MAX_LABEL_CHARS-1)+'…' : raw;
+      const font = (isHovered || n.isCluster || isMatch ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
+      const color = n.ghost ? '#9AA2B8' : (n.isCluster ? '#F0E8FF' : (isMatch ? '#FFF3D6' : '#E7E9EE'));
+      const priority = n.isCluster ? 1000 : (isMatch || isHovered || isActiveNote ? 500 : (n.backlinkCount||0));
+      labelQueue.push({ n, r, text, font, color, alpha: (dim?0.13:1)*fadeAlpha, priority });
     }
+  }
+
+  // 라벨은 다 모아뒀다가 우선순위(클러스터/선택·호버·검색매치 > 연결 많은 노드) 순으로
+  // 한 자리씩 배치한다. 노드 오른쪽이 이미 다른 라벨로 막혀 있으면 왼쪽·위·아래·대각선
+  // 순으로 빈자리를 찾고, 그래도 자리가 없으면 그 라벨은 이번엔 그냥 생략한다 — 다 욱여넣어
+  // 서로 겹쳐 못 읽게 되는 것보다, 조금 덜 보이더라도 읽을 수 있는 쪽이 낫기 때문이다.
+  labelQueue.sort((a,b)=> b.priority - a.priority);
+  const placedRects = [];
+  const rectsOverlap = (a,b)=> !(a.x2<b.x1 || a.x1>b.x2 || a.y2<b.y1 || a.y1>b.y2);
+  for (const item of labelQueue){
+    ctx.font = item.font;
+    const tw = ctx.measureText(item.text).width;
+    const { n, r } = item;
+    const candidates = [
+      { lx: n.x + r + 5,        ly: n.y + 3.5 },              // 오른쪽(기본)
+      { lx: n.x - r - 5 - tw,   ly: n.y + 3.5 },               // 왼쪽
+      { lx: n.x - tw/2,         ly: n.y - r - 6 },             // 위
+      { lx: n.x - tw/2,         ly: n.y + r + 15 },            // 아래
+      { lx: n.x + r*0.7,        ly: n.y - r*0.7 - 4 },         // 오른쪽 위 대각선
+      { lx: n.x + r*0.7,        ly: n.y + r*0.7 + 13 },        // 오른쪽 아래 대각선
+      { lx: n.x - r*0.7 - tw,   ly: n.y - r*0.7 - 4 },         // 왼쪽 위 대각선
+      { lx: n.x - r*0.7 - tw,   ly: n.y + r*0.7 + 13 },        // 왼쪽 아래 대각선
+    ];
+    let chosen = null;
+    for (const c of candidates){
+      const rect = { x1:c.lx-4, y1:c.ly-11, x2:c.lx-4+tw+8, y2:c.ly-11+15 };
+      if (!placedRects.some(p=>rectsOverlap(rect,p))){ chosen = { ...c, rect }; break; }
+    }
+    if (!chosen) continue; // 어느 방향에도 빈자리가 없으면 이번 프레임엔 생략
+    placedRects.push(chosen.rect);
+    ctx.globalAlpha = item.alpha;
+    ctx.fillStyle = 'rgba(9,11,18,.68)';
+    if (ctx.roundRect){ ctx.beginPath(); ctx.roundRect(chosen.rect.x1, chosen.rect.y1, tw+8, 15, 5); ctx.fill(); }
+    else { ctx.fillRect(chosen.rect.x1, chosen.rect.y1, tw+8, 15); }
+    ctx.fillStyle = item.color;
+    ctx.fillText(item.text, chosen.lx, chosen.ly);
   }
   ctx.globalAlpha = 1;
   ctx.setTransform(1,0,0,1,0,0);
