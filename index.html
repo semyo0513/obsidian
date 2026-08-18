@@ -324,6 +324,21 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   z-index: 10; display: flex; flex-direction: column; gap: 12px;
   max-height: 80vh; overflow-y: auto;
 }
+.graph-settings-panel[hidden] {
+  display: none !important;
+}
+.gs-folder-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-hover);
+  margin-top: 4px;
+}
 [data-theme="light"] .graph-settings-panel {
   background: rgba(255,255,255,0.85);
 }
@@ -1179,6 +1194,8 @@ const state = {
   graphKeywordFitTimer: null,  // 키워드 포커스 힘을 준 뒤 잠깐 있다가 자동으로 화면을 맞추는 타이머
   graphScopeFitTimer: null,    // 폴더(범위) 전환 뒤 노드가 퍼지고 나서 다시 화면을 맞추는 타이머
   graphFadingNodes: new Map(), // 방금 화면에서 사라진 노드를 잠깐 더 그려서 스르륵 사라지게(fade-out) 하는 용도
+  graphSelectedFolders: new Set(['__ALL__']), // 다중 선택 폴더 필터링
+  graphHighlightClusterMemberIds: null, // 확장된 클러스터 멤버 하이라이트
   selectionMode: false,   // 노트 목록에서 꾹 눌러 여러 개를 고르는 중인지
   selectedNoteIds: new Set(), // 선택 모드에서 체크된 노트 id들
   settings: {},
@@ -1582,15 +1599,26 @@ function buildClusteredGraphData(activeNotes){
 
 function buildGraphData(){
   let activeNotes = state.notes.filter(n=>!n.deletedAt);
-  // 특정 폴더로 좁혀서 보는 중이면 그 폴더(+하위 폴더)의 노트만 남긴다. 사이드바 폴더
-  // 목록과 같은 규칙(정확히 일치 또는 "폴더/" 접두사)을 써서 동작이 일관되게 한다.
-  // 필터링을 클러스터 판단보다 먼저 해서, 폴더 하나로 좁혔을 때는 그 폴더 노트 수가
-  // 기준(GRAPH_CLUSTER_THRESHOLD) 이하라면 클러스터 없이 전부 개별 노드로 보여준다.
-  if (state.graphFolderFilter === '__UNFILED__'){
-    activeNotes = activeNotes.filter(n=>!n.folder);
-  } else if (state.graphFolderFilter && state.graphFolderFilter !== '__ALL__'){
-    const prefix = state.graphFolderFilter + '/';
-    activeNotes = activeNotes.filter(n => n.folder === state.graphFolderFilter || (n.folder && n.folder.startsWith(prefix)));
+  
+  if (state.graphSelectedFolders && state.graphSelectedFolders.size > 0 && !state.graphSelectedFolders.has('__ALL__')) {
+    activeNotes = activeNotes.filter(n => {
+      if (!n.folder) {
+        return state.graphSelectedFolders.has('__UNFILED__');
+      }
+      for (const selFolder of state.graphSelectedFolders) {
+        if (n.folder === selFolder || n.folder.startsWith(selFolder + '/')) {
+          return true;
+        }
+      }
+      return false;
+    });
+  } else {
+    if (state.graphFolderFilter === '__UNFILED__'){
+      activeNotes = activeNotes.filter(n=>!n.folder);
+    } else if (state.graphFolderFilter && state.graphFolderFilter !== '__ALL__'){
+      const prefix = state.graphFolderFilter + '/';
+      activeNotes = activeNotes.filter(n => n.folder === state.graphFolderFilter || (n.folder && n.folder.startsWith(prefix)));
+    }
   }
   state.graphClusterMode = activeNotes.length > GRAPH_CLUSTER_THRESHOLD;
   const built = state.graphClusterMode ? buildClusteredGraphData(activeNotes) : buildFullGraphData(activeNotes);
@@ -1600,6 +1628,74 @@ function buildGraphData(){
 
 // 그래프 툴바의 폴더 필터 <select>를 사이드바와 같은 폴더 트리 데이터로 채운다.
 // 지금 선택된 값은 유지하되, 목록이 바뀌어 더 이상 존재하지 않는 폴더였다면 전체로 되돌린다.
+function renderGraphFolderChecklist(){
+  const wrap = $('#gsFolderChecklist');
+  if (!wrap) return;
+  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  const total = activeNotes.length;
+  const unfiled = activeNotes.filter(n=>!n.folder).length;
+  
+  const folders = Array.from(new Set(activeNotes.filter(n=>n.folder).map(n=>n.folder))).sort();
+  
+  if (!state.graphSelectedFolders) {
+    state.graphSelectedFolders = new Set(['__ALL__']);
+  }
+  
+  let html = '';
+  const allChecked = state.graphSelectedFolders.has('__ALL__') || state.graphSelectedFolders.size === 0;
+  html += `<label class="gs-label"><input type="checkbox" class="gs-folder-cb" data-folder="__ALL__" ${allChecked ? 'checked' : ''} /> <strong>전체 폴더 (${total})</strong></label>`;
+  
+  if (unfiled > 0) {
+    const unfiledChecked = state.graphSelectedFolders.has('__UNFILED__');
+    html += `<label class="gs-label" style="margin-left: 10px;"><input type="checkbox" class="gs-folder-cb" data-folder="__UNFILED__" ${unfiledChecked ? 'checked' : ''} /> 미분류 (${unfiled})</label>`;
+  }
+  
+  for (const f of folders) {
+    const checked = state.graphSelectedFolders.has(f);
+    const count = activeNotes.filter(n => n.folder === f || (n.folder && n.folder.startsWith(f + '/'))).length;
+    html += `<label class="gs-label" style="margin-left: 10px;"><input type="checkbox" class="gs-folder-cb" data-folder="${escapeHtml(f)}" ${checked ? 'checked' : ''} /> ${escapeHtml(f)} (${count})</label>`;
+  }
+  
+  wrap.innerHTML = html;
+  
+  wrap.querySelectorAll('.gs-folder-cb').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const folder = e.target.dataset.folder;
+      if (folder === '__ALL__') {
+        if (e.target.checked) {
+          state.graphSelectedFolders.clear();
+          state.graphSelectedFolders.add('__ALL__');
+        } else {
+          state.graphSelectedFolders.delete('__ALL__');
+        }
+      } else {
+        state.graphSelectedFolders.delete('__ALL__');
+        const allCb = wrap.querySelector('.gs-folder-cb[data-folder="__ALL__"]');
+        if (allCb) allCb.checked = false;
+        
+        if (e.target.checked) {
+          state.graphSelectedFolders.add(folder);
+        } else {
+          state.graphSelectedFolders.delete(folder);
+        }
+      }
+      
+      if (state.graphSelectedFolders.size === 0) {
+        state.graphSelectedFolders.add('__ALL__');
+        const allCb = wrap.querySelector('.gs-folder-cb[data-folder="__ALL__"]');
+        if (allCb) allCb.checked = true;
+      }
+      
+      wrap.querySelectorAll('.gs-folder-cb').forEach(c => {
+        const f = c.dataset.folder;
+        c.checked = state.graphSelectedFolders.has(f);
+      });
+      
+      rebuildGraphSimulation();
+    });
+  });
+}
+
 function renderGraphFolderOptions(){
   const sel = $('#graphFolderSelect');
   if (!sel) return;
@@ -1625,6 +1721,8 @@ function renderGraphFolderOptions(){
 
   sel.innerHTML = opts.join('');
   sel.value = state.graphFolderFilter;
+  
+  renderGraphFolderChecklist();
 }
 
 function collapseAllGraphClusters(){
@@ -1906,6 +2004,12 @@ function currentHighlight(){
     match.add(hoveredNodeId);
   }
 
+  if (state.graphHighlightClusterMemberIds) {
+    for (const id of state.graphHighlightClusterMemberIds) {
+      match.add(id);
+    }
+  }
+
   if (!match.size) return { match, neighbor:new Set() };
   // 매칭된 노트가 접혀있는 클러스터 안에 숨어 있으면, 그 클러스터 노드 자체를 매치로
   // 간주해 강조해준다 — 안 그러면 클러스터 모드에서 검색해도 아무 데도 안 켜진 것처럼 보인다.
@@ -1942,6 +2046,9 @@ function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,rect.width,rect.height);
 
+  const invTL = transform.invert([0,0]);
+  const invBR = transform.invert([rect.width, rect.height]);
+
   const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#0B0E14';
   const vignette = ctx.createRadialGradient(rect.width/2, rect.height*0.4, 0, rect.width/2, rect.height*0.4, Math.max(rect.width,rect.height)*0.75);
   vignette.addColorStop(0, 'rgba(52,36,86,.32)');
@@ -1955,8 +2062,6 @@ function draw(){
 
   if (transform.k > 0.15){
     const GRID = 46, dotR = 1.1/transform.k;
-    const invTL = transform.invert([0,0]);
-    const invBR = transform.invert([rect.width, rect.height]);
     const x0 = Math.floor(invTL[0]/GRID)*GRID, x1 = invBR[0];
     const y0 = Math.floor(invTL[1]/GRID)*GRID, y1 = invBR[1];
     const cols = Math.ceil((x1-x0)/GRID), rows = Math.ceil((y1-y0)/GRID);
@@ -2064,7 +2169,7 @@ function draw(){
   const LABEL_ALWAYS_ON = 90;
   const LABEL_BUDGET = 90;
   const LABEL_FADE_LO = 0.28, LABEL_FADE_HI = 0.6;
-  const showAllLabels = state.graphNodes.length <= LABEL_ALWAYS_ON;
+  const showAllLabels = state.graphNodes.length <= LABEL_ALWAYS_ON || transform.k > 0.85;
   let labelIds = null, labelFade = 1;
   if (!showAllLabels){
     labelFade = Math.max(0, Math.min(1, (transform.k - LABEL_FADE_LO) / (LABEL_FADE_HI - LABEL_FADE_LO)));
@@ -2153,7 +2258,8 @@ function draw(){
     const alwaysShowLabel = n.isCluster || isHovered || isActiveNote || isMatch;
     const inBudget = showAllLabels || (labelIds && labelIds.has(n.id));
     const fadeAlpha = alwaysShowLabel || showAllLabels ? 1 : labelFade;
-    if ((alwaysShowLabel || inBudget) && fadeAlpha > 0.02 && (!dim || !dimAll)){
+    const inView = n.x >= invTL[0] - 100 && n.x <= invBR[0] + 100 && n.y >= invTL[1] - 100 && n.y <= invBR[1] + 100;
+    if (inView && (alwaysShowLabel || inBudget) && fadeAlpha > 0.02 && (!dim || !dimAll)){
       const raw = n.title || '';
       const text = raw.length > MAX_LABEL_CHARS ? raw.slice(0, MAX_LABEL_CHARS-1)+'…' : raw;
       const font = (isHovered || n.isCluster || isMatch ? '600 ':'') + '11px ' + getComputedStyle(document.body).fontFamily;
@@ -2331,15 +2437,50 @@ function initGraph(){
   canvas.addEventListener('click', (event)=>{
     const [x,y] = transform.invert(d3.pointer(event, canvas));
     const n = nodeAt(x,y);
-    if (!n) return;
+    if (!n) {
+      closeGraphNotePanel();
+      state.activeId = null;
+      state.graphHighlightClusterMemberIds = null;
+      renderNoteList();
+      return;
+    }
     if (n.isCluster){
       state.graphExpandedClusters.add(n.id);
+      state.graphHighlightClusterMemberIds = new Set(n.memberIds);
       rebuildGraphSimulation();
     } else if (n.ghost){
       createNoteWithTitle(n.title, true);
       switchTab('editor');
     } else {
-      selectGraphNode(n.id);
+      const isMobile = window.innerWidth <= 820;
+      if (isMobile) {
+        if (state.activeId === n.id) {
+          openNote(n.id);
+          switchTab('editor');
+        } else {
+          state.activeId = n.id;
+          state.graphSelectedId = n.id;
+          state.graphHighlightClusterMemberIds = null;
+          
+          $('#gnpTitle').textContent = n.title || '제목 없음';
+          const note = state.idx.byId.get(n.id);
+          if (note) {
+            const metaEl = $('#gnpMeta');
+            metaEl.innerHTML = '';
+            if (note.folder) {
+              const f = document.createElement('span'); f.textContent = '📁 '+note.folder; metaEl.appendChild(f);
+            }
+            for (const t of (note.tags||[])){
+              const s = document.createElement('span'); s.textContent = '#'+t; metaEl.appendChild(s);
+            }
+            $('#gnpContent').innerHTML = renderMarkdown(note.content||'') || '<span style="color:var(--text-faint)">(내용 없음)</span>';
+          }
+          renderNoteList();
+        }
+      } else {
+        state.graphHighlightClusterMemberIds = null;
+        selectGraphNode(n.id);
+      }
     }
   });
 
@@ -2354,7 +2495,16 @@ function initGraph(){
   });
   canvas.addEventListener('mouseleave', ()=>{ hoveredNodeId = null; });
 
-  $('#resetZoomBtn').addEventListener('click', fitGraphToView);
+  $('#resetZoomBtn').addEventListener('click', ()=>{
+    state.graphNodesById = new Map();
+    state.graphFadingNodes.clear();
+    transform = d3.zoomIdentity;
+    if (canvas) d3.select(canvas).property("__zoom", d3.zoomIdentity);
+    rebuildGraphSimulation();
+    fitGraphToView();
+    clearTimeout(state.graphScopeFitTimer);
+    state.graphScopeFitTimer = setTimeout(fitGraphToView, 550);
+  });
   $('#autoLinkBtn').addEventListener('click', runAiAutoLink);
   $('#collapseClustersBtn').addEventListener('click', collapseAllGraphClusters);
   $('#graphFolderSelect').addEventListener('change', (e)=>{
@@ -2416,11 +2566,15 @@ function initGraph(){
     const c = +gsCollision.value;
     const g = +gsGravity.value;
 
-    state.simulation
-      .force('charge', d3.forceManyBody().strength(r).distanceMax(520))
-      .force('link').distance(l => l.resolved ? d : d * 1.4)
-      .force('collide', d3.forceCollide(dNode => nodeRadius(dNode) + c))
-      .alphaDecay(g);
+    state.simulation.force('charge', d3.forceManyBody().strength(r).distanceMax(520));
+    
+    const linkForce = state.simulation.force('link');
+    if (linkForce) {
+      linkForce.distance(l => l.resolved ? d : d * 1.4);
+    }
+    
+    state.simulation.force('collide', d3.forceCollide(dNode => nodeRadius(dNode) + c));
+    state.simulation.alphaDecay(g);
     
     state.simulation.alpha(0.3).restart();
   };
@@ -3844,9 +3998,14 @@ function selectGraphNode(id){
 }
 
 function closeGraphNotePanel(){
+  if (state.activeId === state.graphSelectedId) {
+    state.activeId = null;
+  }
   state.graphSelectedId = null;
+  state.graphHighlightClusterMemberIds = null;
   const panel = $('#graphNotePanel');
   if (panel) panel.classList.remove('open');
+  renderNoteList();
 }
 
 function openSidebar(){
