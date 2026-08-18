@@ -17,19 +17,35 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
-  --bg:#0B0E14; --bg-elev:#12161F; --bg-hover:#1B2130; --bg-input:#171B26;
-  --border:#232939; --text:#E7E9EE; --text-dim:#8A93A6; --text-faint:#545E73;
-  --gold:#E3B23C; --gold-dim:rgba(227,178,60,.16);
-  --blue:#4C6FA5; --cyan:#5EC8D8; --danger:#D9695F; --danger-dim:rgba(217,105,95,.14);
+  --bg:#121214; --bg-elev:#1a1a1e; --bg-hover:#26262b; --bg-input:#1e1e22;
+  --border:#2a2a30; --text:#e3e3e6; --text-dim:#9b9ba6; --text-faint:#5f5f69;
+  --accent:#7f6df2; --accent-dim:rgba(127, 109, 242, 0.15); --accent-hover:#9685f5;
+  --gold:#e3b23c; --gold-dim:rgba(227,178,60,.16);
+  --blue:#4c7df2; --cyan:#4ecdc4; --danger:#ff6b6b; --danger-dim:rgba(255, 107, 107, 0.15);
   --radius:8px; --font-ui:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --font-serif:Georgia,"Nanum Myeongjo","Batang",serif;
   --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
 }
 [data-theme="light"]{
-  --bg:#F7F6F3; --bg-elev:#FFFFFF; --bg-hover:#EFEEEA; --bg-input:#FFFFFF;
-  --border:#E3E1DA; --text:#232323; --text-dim:#6B6B6B; --text-faint:#A3A199;
-  --gold:#B8862E; --gold-dim:rgba(184,134,46,.12);
-  --blue:#5876AA; --cyan:#2F8C9C; --danger:#B5453C; --danger-dim:rgba(181,69,60,.10);
+  --bg:#f5f6f8; --bg-elev:#ffffff; --bg-hover:#eef0f3; --bg-input:#fafbfc;
+  --border:#dfe2e7; --text:#1c1d21; --text-dim:#6b6f7b; --text-faint:#a0a5b5;
+  --accent:#634bdf; --accent-dim:rgba(99, 75, 223, 0.15); --accent-hover:#5037cc;
+  --gold:#b8862e; --gold-dim:rgba(184,134,46,.12);
+  --blue:#5876AA; --cyan:#2f8c9c; --danger:#e04f4f; --danger-dim:rgba(224, 79, 79, 0.10);
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
 }
 *{box-sizing:border-box;}
 html,body{height:100%;margin:0;}
@@ -54,31 +70,34 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 .search-box input{width:100%; padding:8px 10px; font-size:13px;}
 #newNoteBtn{
   margin-top:8px; width:100%; padding:9px 10px; font-size:13px; font-weight:600;
-  background:var(--gold-dim); color:var(--gold); border:1px solid transparent; border-radius:var(--radius);
+  background:var(--accent-dim); color:var(--accent); border:1px solid transparent; border-radius:var(--radius);
+  transition: all 0.15s ease;
 }
-#newNoteBtn:hover{background:var(--gold); color:#12161F;}
+#newNoteBtn:hover{background:var(--accent); color:#fff;}
 .folder-list{margin-top:10px; display:flex; flex-direction:column; gap:1px; max-height:220px; overflow-y:auto;}
 .folder-item{
   display:flex; align-items:center; gap:2px;
   padding:5px 8px; border-radius:6px; cursor:pointer; font-size:12px; color:var(--text-dim);
+  transition: all 0.12s ease;
 }
 .folder-item:hover{background:var(--bg-hover); color:var(--text);}
-.folder-item.active{background:var(--gold-dim); color:var(--gold); font-weight:600;}
-.folder-item.drop-target{outline:1.5px dashed var(--gold); outline-offset:-1px; background:var(--gold-dim);}
+.folder-item.active{background:var(--accent-dim); color:var(--accent); font-weight:600;}
+.folder-item.drop-target{outline:1.5px dashed var(--accent); outline-offset:-1px; background:var(--accent-dim);}
 .folder-item .fi-caret{flex:0 0 14px; width:14px; text-align:center; font-size:9px; color:var(--text-faint); cursor:pointer;}
 .folder-item .fi-name{flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .folder-item .fi-count{font-size:10.5px; color:var(--text-faint); flex:0 0 auto; margin-left:6px;}
-.folder-item.active .fi-count{color:var(--gold);}
+.folder-item.active .fi-count{color:var(--accent);}
 .note-list{flex:1; overflow-y:auto; margin-top:12px; display:flex; flex-direction:column; gap:2px;}
 .note-item{
   display:flex; align-items:flex-start; gap:8px;
   padding:8px 10px; border-radius:var(--radius); cursor:pointer; border:1px solid transparent;
   user-select:none; -webkit-user-select:none;
+  transition: all 0.12s ease;
 }
 .note-item:hover{background:var(--bg-hover);}
-.note-item.active{background:var(--gold-dim); border-color:var(--gold);}
+.note-item.active{background:var(--accent-dim); border-color:var(--accent);}
 .note-item.dragging{opacity:.4;}
-.note-item.selected{background:rgba(138,95,209,.16); border-color:rgba(138,95,209,.55);}
+.note-item.selected{background:rgba(127,109,242,.14); border-color:rgba(127,109,242,.45);}
 .note-item .ni-main{flex:1; min-width:0;}
 .note-item .ni-title{font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .note-item .ni-preview{font-size:11.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;}
@@ -88,11 +107,12 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   flex-shrink:0; display:flex; align-items:center; justify-content:center;
   font-size:12px; font-weight:700; color:transparent; transition:background .12s, border-color .12s;
 }
-.note-item.selected .ni-check{background:#8A5FD1; border-color:#8A5FD1; color:#fff;}
+
+.note-item.selected .ni-check{background:var(--accent); border-color:var(--accent); color:#fff;}
 .selection-bar{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   padding:9px 12px; margin:4px 0; border-radius:var(--radius);
-  background:rgba(138,95,209,.14); border:1px solid rgba(138,95,209,.4);
+  background:var(--accent-dim); border:1px solid var(--accent);
   font-size:12.5px; color:var(--text);
 }
 .selection-bar .selection-actions{display:flex; gap:6px;}
@@ -101,7 +121,7 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
   font-size:12px; padding:5px 10px; border-radius:6px;
 }
 #selDeleteBtn:hover{color:#E5766B; border-color:#E5766B;}
-#selMoveBtn:hover{color:#C9A8F0; border-color:#8A5FD1;}
+#selMoveBtn:hover{color:var(--accent-hover); border-color:var(--accent);}
 #selCancelBtn:hover{color:var(--text);}
 .sidebar-footer{
   display:flex; align-items:center; justify-content:space-between; padding-top:10px; margin-top:8px;
@@ -122,9 +142,10 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 .tab{
   background:none; border:none; color:var(--text-dim); font-size:13px; font-weight:600;
   padding:7px 13px; border-radius:6px;
+  transition: all 0.15s ease;
 }
 .tab:hover{background:var(--bg-hover); color:var(--text);}
-.tab.active{background:var(--bg-hover); color:var(--cyan);}
+.tab.active{background:var(--bg-hover); color:var(--accent);}
 .tab-spacer{flex:1;}
 .save-status{font-size:11.5px; color:var(--text-faint);}
 
@@ -133,31 +154,105 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 
 /* editor */
 #view-editor{}
-.editor-pane{flex:1; display:flex; flex-direction:column; padding:22px 30px; min-width:0; overflow-y:auto;}
+.editor-pane{flex:1; display:flex; flex-direction:column; padding:22px 30px; min-width:0; height:100%; overflow:hidden;}
 .title-input{border:none; background:none; font-size:26px; font-weight:700; font-family:var(--font-serif); padding:4px 2px; width:100%;}
 .title-input:focus{outline:none;}
-.editor-toolbar{display:flex; gap:6px; margin:10px 0 8px;}
+.editor-toolbar{display:flex; gap:6px; margin:10px 0 8px; flex-shrink:0;}
 .editor-toolbar button{
   background:var(--bg-elev); border:1px solid var(--border); color:var(--text-dim);
   font-size:12px; padding:5px 11px; border-radius:6px;
+  transition: all 0.15s ease;
 }
-.editor-toolbar button.on{color:var(--cyan); border-color:var(--cyan);}
+.editor-toolbar button.on{color:var(--accent); border-color:var(--accent); background:var(--accent-dim);}
 #mobileMetaBtn{display:none;}
 #deleteNoteBtn:hover{color:var(--danger); border-color:var(--danger);}
 #deleteNoteBtn:disabled{opacity:.5; cursor:default;}
+.editor-body-wrap{
+  flex:1; display:flex; min-height:0; gap:0; position:relative; margin-top:8px;
+}
 #contentInput{
-  flex:1; resize:none; border:none; background:none; font-size:15px; line-height:1.75; padding:6px 2px;
-  min-height:200px;
+  flex:1; resize:none; border:none; background:none; font-size:15px; line-height:1.75; padding:6px 12px 6px 2px;
+  height:100%; display:block; overflow-y:auto;
 }
 #contentInput:focus{outline:none;}
-.preview-pane{display:none; flex:1; font-size:15px; line-height:1.8; padding:6px 2px; overflow-y:auto;}
+.preview-pane{
+  font-size:15px; line-height:1.8; padding:6px 2px 6px 12px; overflow-y:auto;
+  height:100%; display:none; flex:1;
+}
 .preview-pane.on{display:block;}
 #contentInput.hidden-mode{display:none;}
+
+/* Split mode adjustments */
+.editor-body-wrap.split-mode{
+  gap:24px;
+}
+.editor-body-wrap.split-mode #contentInput{
+  flex:1; border-right:1px solid var(--border); display:block !important;
+}
+.editor-body-wrap.split-mode #previewPane{
+  flex:1; display:block !important;
+}
+
 .preview-pane h1,.preview-pane h2,.preview-pane h3{font-family:var(--font-serif); margin:.9em 0 .35em;}
 .preview-pane p{margin:.6em 0;}
 .preview-pane code{background:var(--bg-hover); padding:1px 5px; border-radius:4px; font-family:var(--font-mono); font-size:.9em;}
 .preview-pane ul{padding-left:1.3em;}
-.wikilink{color:var(--cyan); text-decoration:none; border-bottom:1px dashed var(--cyan); cursor:pointer;}
+.preview-pane blockquote {
+  border-left: 4px solid var(--accent);
+  padding: 4px 0 4px 16px;
+  color: var(--text-dim);
+  margin: 12px 0;
+  font-style: italic;
+  background: var(--accent-dim);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.preview-pane pre {
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  margin: 16px 0;
+}
+.preview-pane pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.preview-pane table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 20px 0;
+  font-size: 13px;
+}
+.preview-pane th, .preview-pane td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+.preview-pane th {
+  background-color: var(--bg-hover);
+  font-weight: 600;
+  color: var(--text);
+}
+.preview-pane tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+.preview-pane li.task-list-item {
+  list-style-type: none;
+  display: flex;
+  align-items: center;
+  margin-left: -1.3em;
+}
+.preview-pane li.task-list-item input[type=checkbox] {
+  margin-right: 8px;
+  accent-color: var(--accent);
+  cursor: default;
+}
+.wikilink{color:var(--accent); text-decoration:none; border-bottom:1px dashed var(--accent); cursor:pointer;}
 .wikilink.ghost-link{color:var(--text-faint); border-bottom-color:var(--text-faint);}
 
 .backlinks-pane{
@@ -221,6 +316,25 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 #collapseClustersBtn:hover{color:#D9C4F5; border-color:#8A5FD1; background:rgba(138,95,209,.12);}
 #resetZoomBtn{margin-left:auto;}
 #resetZoomBtn:hover{color:var(--text); border-color:rgba(255,255,255,.4);}
+.graph-settings-panel {
+  position: absolute; top: 12px; left: 16px; width: 260px;
+  background: rgba(26,26,30,0.85); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  z-index: 10; display: flex; flex-direction: column; gap: 12px;
+  max-height: 80vh; overflow-y: auto;
+}
+[data-theme="light"] .graph-settings-panel {
+  background: rgba(255,255,255,0.85);
+}
+.graph-settings-panel h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.graph-settings-panel h5 { margin: 6px 0 4px; font-size: 11.5px; color: var(--text-dim); font-weight: 600; }
+.gs-section { display: flex; flex-direction: column; gap: 6px; }
+.gs-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+.gs-label input[type=checkbox] { cursor: pointer; margin: 0; }
+.gs-slider-group { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+.gs-slider-group label { display: flex; justify-content: space-between; }
+.gs-slider-group input[type=range] { width: 100%; cursor: pointer; accent-color: var(--accent); margin: 4px 0 0; }
 .graph-canvas-wrap{position:relative; flex:1; min-height:0; overflow:hidden;}
 #graphCanvas{width:100%; height:100%; display:block; cursor:grab; touch-action:none;}
 #graphCanvas:active{cursor:grabbing;}
@@ -246,6 +360,7 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
 @media (max-width:820px){
   .graph-note-panel{width:100%; max-width:100%;}
   .gt-select{max-width:120px;}
+  #modeSplitBtn{display:none !important;}
 }
 
 /* AI chat */
@@ -388,12 +503,15 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
         <div class="editor-toolbar">
           <button id="modeWriteBtn" class="on" data-mode="write">편집</button>
           <button id="modePreviewBtn" data-mode="preview">미리보기</button>
+          <button id="modeSplitBtn" data-mode="split">분할 보기</button>
           <button id="historyBtn" style="margin-left:auto;">🕐 히스토리</button>
           <button id="mobileMetaBtn" title="폴더 · 태그 · 연결">📁 폴더/태그</button>
           <button id="deleteNoteBtn" title="휴지통으로 이동">🗑 삭제</button>
         </div>
-        <textarea id="contentInput" placeholder="자유롭게 적어보세요. [[다른 노트 제목]] 형식으로 노트를 서로 연결할 수 있습니다."></textarea>
-        <div id="previewPane" class="preview-pane"></div>
+        <div class="editor-body-wrap">
+          <textarea id="contentInput" placeholder="자유롭게 적어보세요. [[다른 노트 제목]] 형식으로 노트를 서로 연결할 수 있습니다."></textarea>
+          <div id="previewPane" class="preview-pane"></div>
+        </div>
       </div>
       <div class="backlinks-pane">
         <div class="bp-mobile-header">
@@ -432,12 +550,45 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--cyan); o
           </select>
           <button id="autoLinkBtn" title="내용이 비슷한 노트끼리 자동으로 [[링크]]를 추가합니다">🔗 자동 연결</button>
           <button id="collapseClustersBtn" title="펼친 클러스터를 모두 다시 묶습니다" style="display:none;">🔽 되돌리기</button>
+          <button id="graphSettingsBtn" title="그래프 설정">⚙ 설정</button>
           <button id="resetZoomBtn">⤢ 화면 맞춤</button>
         </div>
       </div>
       <div class="graph-canvas-wrap">
         <canvas id="graphCanvas"></canvas>
         <div id="emptyGraphHint" class="empty-hint">노트를 추가하고 [[링크]]로 연결하면 여기에 그래프가 나타납니다.</div>
+        
+        <!-- Graph settings panel -->
+        <div id="graphSettingsPanel" class="graph-settings-panel" hidden>
+          <h4>그래프 설정</h4>
+          <div class="gs-section">
+            <h5>필터</h5>
+            <label class="gs-label"><input type="checkbox" id="gsShowGhosts" checked /> 고스트 노드 표시</label>
+            <label class="gs-label"><input type="checkbox" id="gsFolderColors" checked /> 폴더별 색상 적용</label>
+            <label class="gs-label"><input type="checkbox" id="gsShowParticles" checked /> 연결선 흐름 애니메이션</label>
+            <label class="gs-label"><input type="checkbox" id="gsShowArrows" checked /> 연결 방향 표시</label>
+          </div>
+          <div class="gs-section">
+            <h5>물리 엔진 설정</h5>
+            <div class="gs-slider-group">
+              <label><span>노드 반발력</span><span id="gsRepulsionVal">-72</span></label>
+              <input type="range" id="gsRepulsion" min="-300" max="-10" value="-72" />
+            </div>
+            <div class="gs-slider-group">
+              <label><span>연결 거리</span><span id="gsLinkDistanceVal">42</span></label>
+              <input type="range" id="gsLinkDistance" min="10" max="150" value="42" />
+            </div>
+            <div class="gs-slider-group">
+              <label><span>충돌 방지 범위</span><span id="gsCollisionVal">3</span></label>
+              <input type="range" id="gsCollision" min="0" max="30" value="3" />
+            </div>
+            <div class="gs-slider-group">
+              <label><span>중앙 집중력</span><span id="gsGravityVal">0.026</span></label>
+              <input type="range" id="gsGravity" min="0.001" max="0.1" step="0.001" value="0.026" />
+            </div>
+          </div>
+        </div>
+
         <div id="graphNotePanel" class="graph-note-panel">
           <div class="gnp-header">
             <strong id="gnpTitle"></strong>
@@ -1130,26 +1281,64 @@ function buildPreview(content){
 function renderMarkdown(md){
   let html = escapeHtml(md || '');
 
+  // 1. Code blocks (triple backticks) - Parse before blockquotes, lists, tables to avoid interference
+  html = html.replace(/```([\s\S]*?)```/g, (m, code) => {
+    return '<pre><code>' + code.trim() + '</code></pre>';
+  });
+
+  // 2. Blockquotes (> ) - Parse consecutive blockquote lines together
+  html = html.replace(/(?:^&gt;\s.*\r?\n?)+/gm, (m) => {
+    const inner = m.replace(/^&gt;\s?/gm, '');
+    return '<blockquote>' + inner.replace(/\n/g, '<br>') + '</blockquote>';
+  });
+
+  // 3. Table parser
+  html = html.replace(/(?:^\|.*\|\r?\n?)+/gm, (m) => {
+    const lines = m.trim().split('\n');
+    if (lines.length < 2) return m;
+    // Check separator row
+    if (!/^\|?[\s:-|]+$/g.test(lines[1])) return m;
+    
+    let tableHtml = '<table>';
+    const headers = lines[0].split('|').slice(1, -1).map(h => `<th>${h.trim()}</th>`).join('');
+    tableHtml += `<thead><tr>${headers}</tr></thead><tbody>`;
+    for (let i = 2; i < lines.length; i++) {
+      const cells = lines[i].split('|').slice(1, -1).map(c => `<td>${c.trim()}</td>`).join('');
+      tableHtml += `<tr>${cells}</tr>`;
+    }
+    tableHtml += '</tbody></table>';
+    return tableHtml;
+  });
+
+  // 4. Headings
   html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>')
              .replace(/^## (.*)$/gm, '<h2>$1</h2>')
              .replace(/^# (.*)$/gm, '<h1>$1</h1>');
 
+  // 5. Code, Strong, Emphasis
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
 
+  // 6. Wiki links
   html = html.replace(/\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g, (m, title, alias) => {
     const t = title.trim(); const display = (alias||title).trim();
     const resolved = !!findNoteByTitle(t);
     return `<a href="#" class="wikilink${resolved?'':' ghost-link'}" data-wikilink-title="${escapeHtml(t)}">${escapeHtml(display)}</a>`;
   });
 
-  html = html.replace(/^- (.*)$/gm, '<li>$1</li>');
-  html = html.replace(/(?:<li>.*<\/li>\n?)+/g, (m) => '<ul>'+m+'</ul>');
+  // 7. Check lists (Task lists) - parse before normal bullet lists
+  html = html.replace(/^- \[ \] (.*)$/gm, '<li class="task-list-item"><input type="checkbox" disabled /> $1</li>');
+  html = html.replace(/^- \[x\] (.*)$/gm, '<li class="task-list-item"><input type="checkbox" checked disabled /> <del>$1</del></li>');
 
+  // 8. Bullet lists
+  html = html.replace(/^- (.*)$/gm, '<li>$1</li>');
+  html = html.replace(/(?:<li.*<\/li>\r?\n?)+/g, (m) => '<ul>'+m+'</ul>');
+
+  // 9. Split paragraphs - ignore block-level elements
   html = html.split(/\n{2,}/).map(block=>{
     const trimmed = block.trim();
-    if (/^<(h1|h2|h3|ul)/.test(trimmed)) return block;
+    if (/^<(h1|h2|h3|ul|pre|blockquote|table)/.test(trimmed)) return block;
     if (!trimmed) return '';
     return '<p>'+block.replace(/\n/g,'<br>')+'</p>';
   }).join('\n');
@@ -1303,17 +1492,22 @@ function computeGraphClusters(notePool){
 
 function buildFullGraphData(activeNotes){
   const nodes = [];
+  const activeIds = new Set(activeNotes.map(n=>n.id));
   for (const n of activeNotes){
     nodes.push({ id:n.id, title:n.title||'제목 없음', ghost:false, backlinkCount: state.idx.backlinkCount.get(n.id)||0 });
   }
   const links = [];
   const ghostSeen = new Map();
+  const showGhosts = state.settings.showGhosts !== false;
+  
   for (const n of activeNotes){
     for (const l of (state.idx.linksOf.get(n.id)||[])){
       if (l.self) continue;
       if (l.targetId){
-        links.push({ source:n.id, target:l.targetId, resolved:true });
-      } else {
+        if (activeIds.has(l.targetId)) {
+          links.push({ source:n.id, target:l.targetId, resolved:true });
+        }
+      } else if (showGhosts) {
         const key = l.title.toLowerCase();
         let gid = ghostSeen.get(key);
         if (!gid){
@@ -1328,11 +1522,6 @@ function buildFullGraphData(activeNotes){
   return { nodes, links };
 }
 
-// 노트가 GRAPH_CLUSTER_THRESHOLD를 넘을 때 쓰는 경로. computeGraphClusters가 이미 모든
-// 클러스터를 GRAPH_BUCKET_SIZE 이하로 잘라주기 때문에, 사용자가 클릭해서 펼친 클러스터는
-// 재귀 없이 한 번에 바로 개별 노트로 드러난다(클러스터 자체가 이미 작아서 다시 클러스터링할
-// 필요가 없다). 펼치지 않은 나머지는 큰 "묶음 노드" 하나로만 렌더링해 시뮬레이션에 들어가는
-// 노드 수를 억제한다.
 function buildClusteredGraphData(activeNotes){
   const { clusterOfId, clusters } = computeGraphClusters(activeNotes);
   const expanded = state.graphExpandedClusters;
@@ -1340,6 +1529,8 @@ function buildClusteredGraphData(activeNotes){
   const nodeIds = new Set();
   const visibleIdOf = new Map(); // 실제 노트id -> 지금 화면에 보이는 대표 노드id(자기 자신 또는 소속 클러스터id)
   const ghostSeen = new Map();
+  const activeIds = new Set(activeNotes.map(n=>n.id));
+  const showGhosts = state.settings.showGhosts !== false;
 
   for (const n of activeNotes){
     const cid = clusterOfId.get(n.id);
@@ -1364,6 +1555,7 @@ function buildClusteredGraphData(activeNotes){
     for (const l of (state.idx.linksOf.get(n.id)||[])){
       if (l.self) continue;
       if (l.targetId){
+        if (!activeIds.has(l.targetId)) continue;
         if (!state.idx.byId.has(l.targetId)) continue;
         const vTarget = visibleIdOf.get(l.targetId);
         if (!vTarget || vSource === vTarget) continue; // 같은(아직 접힌) 클러스터 내부 링크는 생략
@@ -1371,9 +1563,7 @@ function buildClusteredGraphData(activeNotes){
         if (linkSeen.has(key)) continue;
         linkSeen.add(key);
         links.push({ source:vSource, target:vTarget, resolved:true });
-      } else {
-        // 고스트(아직 없는 노트) 링크는 출발 노트가 개별적으로 펼쳐져 보일 때만 추가한다.
-        // 안 그러면 클러스터가 많을 때 고스트 노드까지 함께 폭증할 수 있다.
+      } else if (showGhosts) {
         if (vSource !== n.id) continue;
         const key = l.title.toLowerCase();
         let gid = ghostSeen.get(key);
@@ -1467,10 +1657,25 @@ function rebuildGraphSimulation(){
   const now = performance.now();
   const nextIds = new Set(nodes.map(n=>n.id));
   let carriedOver = 0;
+  const rect = canvas ? canvas.getBoundingClientRect() : { width: 800, height: 600 };
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
   for (const n of nodes){
     const old = prev.get(n.id);
-    if (old){ n.x=old.x; n.y=old.y; n.vx=old.vx; n.vy=old.vy; n._enterAt = old._enterAt; carriedOver++; }
-    else { n._enterAt = now; } // 새로 나타난 노드 — draw()에서 살짝 커지며 페이드인시킨다
+    if (old && typeof old.x === 'number'){
+      n.x = old.x;
+      n.y = old.y;
+      n.vx = old.vx;
+      n.vy = old.vy;
+      n._enterAt = old._enterAt;
+      carriedOver++;
+    } else {
+      n.x = cx + (Math.random() - 0.5) * 40;
+      n.y = cy + (Math.random() - 0.5) * 40;
+      n.vx = 0;
+      n.vy = 0;
+      n._enterAt = now;
+    }
   }
   // 방금까지 있었는데 이번엔 사라진 노드는 바로 지우지 않고 잠깐 더 그려서(fade-out) 부드럽게
   // 없어지게 한다 — 폴더를 바꾸거나 클러스터를 펼치고 접을 때 노드가 뚝뚝 끊겨 사라지는
@@ -1490,14 +1695,18 @@ function rebuildGraphSimulation(){
   state.graphNodes = nodes;
   state.graphLinks = links;
 
+  const repulsion = state.settings.repulsion ?? -72;
+  const linkDistance = state.settings.linkDistance ?? 42;
+  const collision = state.settings.collision ?? 3;
+  const gravity = state.settings.gravity ?? 0.026;
+
   if (state.simulation) state.simulation.stop();
-  const rect = canvas.getBoundingClientRect();
   state.simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d=>d.id).distance(l=>l.resolved?42:60).strength(0.28))
-    .force('charge', d3.forceManyBody().strength(-72).distanceMax(520))
+    .force('link', d3.forceLink(links).id(d=>d.id).distance(l=>l.resolved?linkDistance:linkDistance*1.4).strength(0.28))
+    .force('charge', d3.forceManyBody().strength(repulsion).distanceMax(520))
     .force('center', d3.forceCenter(rect.width/2, rect.height/2))
-    .force('collide', d3.forceCollide(d=>nodeRadius(d)+3))
-    .alphaDecay(0.026);
+    .force('collide', d3.forceCollide(d=>nodeRadius(d)+collision))
+    .alphaDecay(gravity);
 
   // 대부분의 노드가 이전과 같으면(=자잘한 변화) 살살 재정렬되도록 낮은 에너지로 시작하고,
   // 노드 구성이 크게 바뀌었으면(=폴더를 아예 다른 곳으로 바꾸는 등) 원래대로 힘차게 다시 배치한다.
@@ -1692,6 +1901,11 @@ function currentHighlight(){
   } else if (state.graphSelectedId){
     match.add(state.graphSelectedId);
   }
+  
+  if (hoveredNodeId) {
+    match.add(hoveredNodeId);
+  }
+
   if (!match.size) return { match, neighbor:new Set() };
   // 매칭된 노트가 접혀있는 클러스터 안에 숨어 있으면, 그 클러스터 노드 자체를 매치로
   // 간주해 강조해준다 — 안 그러면 클러스터 모드에서 검색해도 아무 데도 안 켜진 것처럼 보인다.
@@ -1708,6 +1922,19 @@ function currentHighlight(){
   return { match, neighbor };
 }
 
+function getFolderColor(folderPath) {
+  if (!folderPath) return state.theme === 'light' ? '#2F8C9C' : '#4FA9BD';
+  const topFolder = folderPath.split('/')[0];
+  const activeNotes = state.notes.filter(n=>!n.deletedAt);
+  const folders = Array.from(new Set(activeNotes.filter(n=>n.folder).map(n=>n.folder.split('/')[0]))).sort();
+  const index = folders.indexOf(topFolder);
+  if (index === -1) return state.theme === 'light' ? '#2F8C9C' : '#4FA9BD';
+  const hue = (index * 360 / Math.max(1, folders.length)) % 360;
+  const saturation = 70;
+  const lightness = state.theme === 'light' ? 45 : 60;
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
 function draw(){
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -1715,8 +1942,6 @@ function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,rect.width,rect.height);
 
-  // 은은한 비네트 배경 — 화면 중앙이 살짝 밝고 가장자리로 갈수록 어두워져 밋밋한
-  // 단색보다 훨씬 "디지털 캔버스" 같은 깊이감을 준다.
   const bg = getComputedStyle(document.body).getPropertyValue('--bg').trim() || '#0B0E14';
   const vignette = ctx.createRadialGradient(rect.width/2, rect.height*0.4, 0, rect.width/2, rect.height*0.4, Math.max(rect.width,rect.height)*0.75);
   vignette.addColorStop(0, 'rgba(52,36,86,.32)');
@@ -1728,8 +1953,6 @@ function draw(){
   ctx.translate(transform.x, transform.y);
   ctx.scale(transform.k, transform.k);
 
-  // 점 그리드 — Figma/옵시디언 캔버스 같은 "작업판" 느낌을 준다. 너무 축소된 상태에서
-  // 점 개수가 폭증하면 성능이 나빠지므로 화면에 찍힐 점 수를 계산해 그 이상이면 생략한다.
   if (transform.k > 0.15){
     const GRID = 46, dotR = 1.1/transform.k;
     const invTL = transform.invert([0,0]);
@@ -1749,7 +1972,7 @@ function draw(){
 
   const { match, neighbor } = currentHighlight();
   const dimAll = match.size > 0;
-  const pulse = 0.5 + 0.5*Math.sin(performance.now()/650); // 클러스터·검색매치 링에 쓸 숨쉬는 듯한 애니메이션 값(0~1)
+  const pulse = 0.5 + 0.5*Math.sin(performance.now()/650);
 
   // edges
   for (const l of state.graphLinks){
@@ -1762,12 +1985,52 @@ function draw(){
       : 'rgba(94,100,120,'+(dim?0.03:0.14)+')';
     ctx.setLineDash(l.resolved ? [] : [3,3]);
     ctx.lineWidth = (touchesHover ? 1.8 : 0.9)/transform.k;
+    
     ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(t.x,t.y); ctx.stroke();
-  }
-  ctx.setLineDash([]);
+    ctx.setLineDash([]);
 
-  // 방금까지 있었지만 이번 재구성에서 빠진 노드들을 잠깐 옅어지며 그려서(fade-out)
-  // 화면에서 뚝 끊겨 사라지는 대신 스르륵 없어지는 것처럼 보이게 한다.
+    // Draw arrows
+    if (state.settings.showArrows !== false) {
+      const dx = t.x - s.x;
+      const dy = t.y - s.y;
+      const len = Math.hypot(dx, dy);
+      if (len > 0) {
+        const arrowR = nodeRadius(t) + 3;
+        if (len > arrowR) {
+          const tx = t.x - (dx / len) * arrowR;
+          const ty = t.y - (dy / len) * arrowR;
+          const angle = Math.atan2(dy, dx);
+          const arrowSize = 6 / transform.k;
+          
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(tx - arrowSize * Math.cos(angle - Math.PI/6), ty - arrowSize * Math.sin(angle - Math.PI/6));
+          ctx.lineTo(tx - arrowSize * Math.cos(angle + Math.PI/6), ty - arrowSize * Math.sin(angle + Math.PI/6));
+          ctx.closePath();
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.fill();
+        }
+      }
+    }
+
+    // Draw flow particles
+    if (state.settings.showParticles !== false && !dim) {
+      const linkHash = (s.id + '').charCodeAt(0) + (t.id + '').charCodeAt(0);
+      const particleTime = performance.now();
+      const pT = ((particleTime * 0.00045) + (linkHash * 0.17)) % 1;
+      const dx = t.x - s.x;
+      const dy = t.y - s.y;
+      const px = s.x + dx * pT;
+      const py = s.y + dy * pT;
+
+      ctx.beginPath();
+      ctx.arc(px, py, 2.0 / transform.k, 0, Math.PI * 2);
+      ctx.fillStyle = l.resolved ? 'rgba(255, 230, 170, 0.85)' : 'rgba(255, 255, 255, 0.4)';
+      ctx.fill();
+    }
+  }
+
+  // fade-out
   const FADE_OUT_MS = 420;
   if (state.graphFadingNodes.size){
     const nowMs = performance.now();
@@ -1777,7 +2040,17 @@ function draw(){
       ctx.globalAlpha = (1-t) * 0.55;
       const r = nodeRadius(fn);
       ctx.beginPath(); ctx.arc(fn.x, fn.y, r, 0, Math.PI*2);
-      ctx.fillStyle = fn.isCluster ? '#8A5FD1' : (fn.ghost ? '#788096' : '#4FA9BD');
+      
+      let fadeFill;
+      if (fn.isCluster) fadeFill = '#6A3FBF';
+      else if (fn.ghost) fadeFill = 'rgba(120,128,150,.85)';
+      else if (state.settings.folderColors !== false) {
+        const note = state.idx.byId.get(fn.id);
+        fadeFill = getFolderColor(note ? note.folder : null);
+      } else {
+        fadeFill = state.theme === 'light' ? '#2F8C9C' : '#4FA9BD';
+      }
+      ctx.fillStyle = fadeFill;
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -1825,7 +2098,7 @@ function draw(){
     // 느낌을 주고, 수가 훨씬 많은 일반 노드·고스트는 성능을 위해 단색으로 채운다.
     let fill;
     if (n.ghost){
-      fill = 'rgba(120,128,150,.85)';
+      fill = state.theme === 'light' ? 'rgba(138,147,166,.85)' : 'rgba(120,128,150,.85)';
     } else if (isMatch){
       const g = ctx.createRadialGradient(n.x-r*0.3,n.y-r*0.3,0,n.x,n.y,r*1.3);
       g.addColorStop(0, '#FFE9AE'); g.addColorStop(1, '#D89B2E');
@@ -1836,14 +2109,23 @@ function draw(){
       fill = g;
     } else if (isHovered || isActiveNote){
       const g = ctx.createRadialGradient(n.x-r*0.3,n.y-r*0.3,0,n.x,n.y,r*1.3);
-      g.addColorStop(0, '#B9F3FA'); g.addColorStop(1, '#2C93A8');
+      g.addColorStop(0, '#B9F3FA'); g.addColorStop(1, 'var(--accent)');
       fill = g;
+    } else if (state.settings.folderColors !== false) {
+      const note = state.idx.byId.get(n.id);
+      fill = getFolderColor(note ? note.folder : null);
     } else {
-      fill = '#4FA9BD';
+      fill = state.theme === 'light' ? '#2F8C9C' : '#4FA9BD';
     }
 
-    ctx.shadowBlur = n.ghost ? 0 : (isMatch ? 14+pulse*8 : (n.isCluster ? 12+pulse*6 : (isHovered ? 16 : 6)));
-    ctx.shadowColor = isMatch ? '#F0C766' : (n.isCluster ? 'rgba(154,111,224,.65)' : 'rgba(94,200,216,.5)');
+    const isHighlighted = isMatch || isHovered || isActiveNote || (neighbor.size > 0 && neighbor.has(n.id));
+    if (isHighlighted && !dim) {
+      ctx.shadowBlur = n.ghost ? 0 : (isMatch ? 14+pulse*8 : (n.isCluster ? 12+pulse*6 : (isHovered ? 16 : 8)));
+      ctx.shadowColor = isMatch ? '#F0C766' : (n.isCluster ? 'rgba(154,111,224,.65)' : 'rgba(127,109,242,.5)');
+    } else {
+      ctx.shadowBlur = 0;
+    }
+    
     ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
     ctx.fillStyle = fill;
     ctx.fill();
@@ -2076,14 +2358,122 @@ function initGraph(){
   $('#autoLinkBtn').addEventListener('click', runAiAutoLink);
   $('#collapseClustersBtn').addEventListener('click', collapseAllGraphClusters);
   $('#graphFolderSelect').addEventListener('change', (e)=>{
-    state.graphFolderFilter = e.target.value;
-    state.graphExpandedClusters.clear(); // 다른 폴더로 좁히면 이전에 펼쳐둔 클러스터는 의미가 없어지므로 초기화
+    const folder = e.target.value;
+    state.activeFolder = folder;
+    state.graphFolderFilter = folder;
+    state.graphExpandedClusters.clear();
+    renderNoteList();
     activateGraphScope();
   });
   $('#graphKeywordInput').addEventListener('input', (e)=> runGraphKeywordSearch(e.target.value));
   $('#graphKeywordClearBtn').addEventListener('click', ()=>{
     $('#graphKeywordInput').value = '';
     applyGraphKeyword('');
+  });
+
+  // Initialize Graph Settings controls from state.settings
+  const gsShowGhosts = $('#gsShowGhosts');
+  const gsFolderColors = $('#gsFolderColors');
+  const gsShowParticles = $('#gsShowParticles');
+  const gsShowArrows = $('#gsShowArrows');
+  const gsRepulsion = $('#gsRepulsion');
+  const gsLinkDistance = $('#gsLinkDistance');
+  const gsCollision = $('#gsCollision');
+  const gsGravity = $('#gsGravity');
+
+  gsShowGhosts.checked = state.settings.showGhosts !== false;
+  gsFolderColors.checked = state.settings.folderColors !== false;
+  gsShowParticles.checked = state.settings.showParticles !== false;
+  gsShowArrows.checked = state.settings.showArrows !== false;
+  gsRepulsion.value = state.settings.repulsion;
+  gsLinkDistance.value = state.settings.linkDistance;
+  gsCollision.value = state.settings.collision;
+  gsGravity.value = state.settings.gravity;
+
+  // Set initial labels
+  $('#gsRepulsionVal').textContent = state.settings.repulsion;
+  $('#gsLinkDistanceVal').textContent = state.settings.linkDistance;
+  $('#gsCollisionVal').textContent = state.settings.collision;
+  $('#gsGravityVal').textContent = state.settings.gravity;
+
+  // Bind settings listeners
+  const saveGraphSettings = async () => {
+    state.settings.showGhosts = gsShowGhosts.checked;
+    state.settings.folderColors = gsFolderColors.checked;
+    state.settings.showParticles = gsShowParticles.checked;
+    state.settings.showArrows = gsShowArrows.checked;
+    state.settings.repulsion = +gsRepulsion.value;
+    state.settings.linkDistance = +gsLinkDistance.value;
+    state.settings.collision = +gsCollision.value;
+    state.settings.gravity = +gsGravity.value;
+    await Store.saveSettings(state.settings);
+  };
+
+  const updateSimulationForces = () => {
+    if (!state.simulation) return;
+    const r = +gsRepulsion.value;
+    const d = +gsLinkDistance.value;
+    const c = +gsCollision.value;
+    const g = +gsGravity.value;
+
+    state.simulation
+      .force('charge', d3.forceManyBody().strength(r).distanceMax(520))
+      .force('link').distance(l => l.resolved ? d : d * 1.4)
+      .force('collide', d3.forceCollide(dNode => nodeRadius(dNode) + c))
+      .alphaDecay(g);
+    
+    state.simulation.alpha(0.3).restart();
+  };
+
+  // Filter toggles
+  gsShowGhosts.addEventListener('change', async () => {
+    await saveGraphSettings();
+    rebuildGraphSimulation();
+  });
+  gsFolderColors.addEventListener('change', async () => {
+    await saveGraphSettings();
+    draw();
+  });
+  gsShowParticles.addEventListener('change', async () => {
+    await saveGraphSettings();
+  });
+  gsShowArrows.addEventListener('change', async () => {
+    await saveGraphSettings();
+  });
+
+  // Force sliders
+  gsRepulsion.addEventListener('input', (e) => {
+    $('#gsRepulsionVal').textContent = e.target.value;
+    updateSimulationForces();
+    saveGraphSettings();
+  });
+  gsLinkDistance.addEventListener('input', (e) => {
+    $('#gsLinkDistanceVal').textContent = e.target.value;
+    updateSimulationForces();
+    saveGraphSettings();
+  });
+  gsCollision.addEventListener('input', (e) => {
+    $('#gsCollisionVal').textContent = e.target.value;
+    updateSimulationForces();
+    saveGraphSettings();
+  });
+  gsGravity.addEventListener('input', (e) => {
+    $('#gsGravityVal').textContent = e.target.value;
+    updateSimulationForces();
+    saveGraphSettings();
+  });
+
+  // Settings Panel toggle
+  $('#graphSettingsBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = $('#graphSettingsPanel');
+    panel.hidden = !panel.hidden;
+  });
+  document.addEventListener('click', (e) => {
+    const panel = $('#graphSettingsPanel');
+    if (panel && !panel.hidden && !e.target.closest('.graph-settings-panel') && !e.target.closest('#graphSettingsBtn')) {
+      panel.hidden = true;
+    }
   });
 }
 
@@ -3164,14 +3554,32 @@ function renderFolderNode(node, depth, wrap){
     // 상위 폴더를 누르면 하위 폴더까지 펼치면서, 동시에 그 폴더(+하위 전체)로 필터링한다.
     el.onclick = ()=>{
       if (hasChildren && !isExpanded) state.expandedFolders.add(child.path);
-      state.activeFolder = child.path;
-      renderNoteList();
+      selectFolder(child.path);
     };
     makeFolderDropTarget(el, child.path);
     wrap.appendChild(el);
     if (hasChildren && isExpanded){
       renderFolderNode(child, depth+1, wrap);
     }
+  }
+}
+
+function selectFolder(folderPath) {
+  state.activeFolder = folderPath;
+  state.graphFolderFilter = folderPath;
+  state.graphExpandedClusters.clear();
+  
+  // Keep dropdown select in sync if graph view exists
+  const selectEl = $('#graphFolderSelect');
+  if (selectEl) {
+    selectEl.value = folderPath;
+  }
+  
+  renderNoteList();
+  
+  // If we are currently on the graph tab, trigger graph scope animation/reload!
+  if ($('.tab[data-tab="graph"]').classList.contains('active')) {
+    activateGraphScope();
   }
 }
 
@@ -3187,7 +3595,7 @@ function renderFolderList(){
   const allEl = document.createElement('div');
   allEl.className = 'folder-item' + (state.activeFolder==='__ALL__' ? ' active' : '');
   allEl.innerHTML = `<span class="fi-caret"></span><span class="fi-name">전체 노트</span><span class="fi-count">${total}</span>`;
-  allEl.onclick = ()=>{ state.activeFolder = '__ALL__'; renderNoteList(); };
+  allEl.onclick = ()=>{ selectFolder('__ALL__'); };
   makeFolderDropTarget(allEl, null);
   wrap.appendChild(allEl);
 
@@ -3198,7 +3606,7 @@ function renderFolderList(){
     const unfiledEl = document.createElement('div');
     unfiledEl.className = 'folder-item' + (state.activeFolder==='__UNFILED__' ? ' active' : '');
     unfiledEl.innerHTML = `<span class="fi-caret"></span><span class="fi-name">미분류</span><span class="fi-count">${unfiled}</span>`;
-    unfiledEl.onclick = ()=>{ state.activeFolder = '__UNFILED__'; renderNoteList(); };
+    unfiledEl.onclick = ()=>{ selectFolder('__UNFILED__'); };
     makeFolderDropTarget(unfiledEl, null);
     wrap.appendChild(unfiledEl);
   }
@@ -3308,6 +3716,41 @@ function renderBacklinks(){
   }
 }
 
+function updateEditorLayout() {
+  const wrap = $('.editor-body-wrap');
+  if (!wrap) return;
+  
+  // Remove all mode classes
+  wrap.classList.remove('split-mode');
+  $('#contentInput').classList.remove('hidden-mode');
+  $('#previewPane').classList.remove('on');
+  
+  // Remove "on" class from all buttons
+  $('#modeWriteBtn').classList.remove('on');
+  $('#modePreviewBtn').classList.remove('on');
+  $('#modeSplitBtn').classList.remove('on');
+  
+  if (state.editorMode === 'write') {
+    $('#modeWriteBtn').classList.add('on');
+  } else if (state.editorMode === 'preview') {
+    $('#modePreviewBtn').classList.add('on');
+    $('#contentInput').classList.add('hidden-mode');
+    $('#previewPane').classList.add('on');
+    renderPreview();
+  } else if (state.editorMode === 'split') {
+    // Only allow split mode on desktop
+    if (window.innerWidth > 820) {
+      $('#modeSplitBtn').classList.add('on');
+      wrap.classList.add('split-mode');
+      renderPreview();
+    } else {
+      // Fallback to write mode on mobile
+      state.editorMode = 'write';
+      $('#modeWriteBtn').classList.add('on');
+    }
+  }
+}
+
 function renderEditor(){
   const note = state.activeId ? state.idx.byId.get(state.activeId) : null;
   $('#titleInput').value = note ? note.title : '';
@@ -3324,6 +3767,8 @@ function renderEditor(){
   renderPreview();
   renderBacklinks();
   hideLinkPicker();
+  
+  updateEditorLayout();
 }
 
 function renderPreview(){
@@ -3534,7 +3979,23 @@ function switchTab(tab){
   $$('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   $$('.view').forEach(v=>v.classList.remove('active'));
   $('#view-'+tab).classList.add('active');
-  if (tab==='graph'){ resizeGraphCanvas(); rebuildGraphSimulation(); startGraphLoop(); }
+  if (tab==='graph'){
+    if (state.graphFolderFilter !== state.activeFolder) {
+      state.graphFolderFilter = state.activeFolder;
+      state.graphExpandedClusters.clear();
+      state.graphNodesById = new Map();
+      state.graphFadingNodes.clear();
+      transform = d3.zoomIdentity;
+      if (canvas) d3.select(canvas).property("__zoom", d3.zoomIdentity);
+    }
+    resizeGraphCanvas();
+    rebuildGraphSimulation();
+    startGraphLoop();
+    
+    fitGraphToView();
+    clearTimeout(state.graphScopeFitTimer);
+    state.graphScopeFitTimer = setTimeout(fitGraphToView, 650);
+  }
   else stopGraphLoop();
   // 탭을 넘길 때마다 붕 떠 있는 오버레이(그래프 노트 패널, 모바일 폴더/백링크 바텀시트,
   // 사이드바)를 전부 확실히 닫는다. 이걸 안 하면 예를 들어 그래프에서 노트를 열어본 뒤
@@ -3850,6 +4311,14 @@ function importMarkdownFiles(fileList){
 --------------------------------------------------------------------- */
 async function init(){
   state.settings = await Store.loadSettings();
+  if (state.settings.showGhosts === undefined) state.settings.showGhosts = true;
+  if (state.settings.folderColors === undefined) state.settings.folderColors = true;
+  if (state.settings.showParticles === undefined) state.settings.showParticles = true;
+  if (state.settings.showArrows === undefined) state.settings.showArrows = true;
+  if (state.settings.repulsion === undefined) state.settings.repulsion = -72;
+  if (state.settings.linkDistance === undefined) state.settings.linkDistance = 42;
+  if (state.settings.collision === undefined) state.settings.collision = 3;
+  if (state.settings.gravity === undefined) state.settings.gravity = 0.026;
   applyTheme(state.settings.theme || 'dark');
 
   await Ledger.loadAll();
@@ -3885,6 +4354,20 @@ async function init(){
   $('#newNoteBtn').addEventListener('click', ()=> createNoteWithTitle('제목 없음'));
   $('#titleInput').addEventListener('input', touchActiveNoteFromInputs);
   $('#contentInput').addEventListener('input', touchActiveNoteFromInputs);
+  $('#contentInput').addEventListener('keydown', (e)=>{
+    if (e.key === '[') {
+      const ta = e.target;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const text = ta.value;
+      if (start > 0 && text[start - 1] === '[') {
+        e.preventDefault();
+        ta.value = text.slice(0, start) + '[]' + text.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + 1;
+        touchActiveNoteFromInputs();
+      }
+    }
+  });
   $('#tagsInput').addEventListener('input', touchActiveNoteFromInputs);
   $('#folderInput').addEventListener('input', touchActiveNoteFromInputs);
   $('#folderInput').addEventListener('change', renderFolderList);
@@ -3903,16 +4386,15 @@ async function init(){
 
   $('#modeWriteBtn').addEventListener('click', ()=>{
     state.editorMode='write';
-    $('#modeWriteBtn').classList.add('on'); $('#modePreviewBtn').classList.remove('on');
-    $('#contentInput').classList.remove('hidden-mode');
-    $('#previewPane').classList.remove('on');
+    updateEditorLayout();
   });
   $('#modePreviewBtn').addEventListener('click', ()=>{
     state.editorMode='preview';
-    $('#modePreviewBtn').classList.add('on'); $('#modeWriteBtn').classList.remove('on');
-    $('#contentInput').classList.add('hidden-mode');
-    renderPreview();
-    $('#previewPane').classList.add('on');
+    updateEditorLayout();
+  });
+  $('#modeSplitBtn').addEventListener('click', ()=>{
+    state.editorMode='split';
+    updateEditorLayout();
   });
 
   // 위키링크 / 백링크 클릭 (미리보기 안)
